@@ -1,8 +1,13 @@
+/* Import Google Font */
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;700&display=swap');
+
 body {
-    font-family: Arial, sans-serif;
+    font-family: 'Poppins', sans-serif; /* Use Poppins font */
     margin: 0;
     padding: 0;
-    background-color: #f4f4f4;
+    background-color: #FFE629; /* Yellow background */
+    text-align: center; /* Center all text */
+    color: #4E29FF; /* Text color on yellow background */
 }
 
 header {
@@ -10,24 +15,81 @@ header {
     color: #ffffff;
     padding: 10px 0;
     text-align: center;
+    margin-bottom: 20px; /* Bottom margin */
 }
 
 h1 {
     margin: 0;
+    margin-bottom: 20px; /* Bottom margin */
 }
 
 .container {
     width: 80%;
     margin: auto;
     overflow: hidden;
+    margin-bottom: 20px; /* Bottom margin */
 }
 
 footer {
     background: #35424a;
-    color: #ffffff;
-    text-align: center;
-    padding: 10px 0;
-    position: relative;
-    bottom: 0;
-    width: 100%;
+    text-align: center; /* Center text in footer */
+    margin-top: 20px; /* Top margin */
+}
+
+/* Universal styles for the application */
+.card {
+    border: 4px solid #4E29FF; /* Thicker call to action border */
+    border-radius: 15px; /* Rounded corners */
+    margin-bottom: 20px; /* Bottom margin */
+}
+
+.card-title, 
+.card-text {
+    color: #6354AA; /* Purple */
+    margin-bottom: 10px; /* Bottom margin */
+}
+
+.btn-primary {
+    background-color: #4E29FF; /* Call to action background */
+    border: 4px solid #4E29FF; /* Thicker call to action border */
+    color: #ffffff; /* White text */
+    border-radius: 10px; /* Rounded corners */
+    margin-bottom: 20px; /* Bottom margin */
+}
+
+.btn-primary:hover {
+    background-color: #3B1FCC; /* Darker call to action background */
+    border: 4px solid #3B1FCC; /* Thicker darker call to action border */
+}
+
+/* Styles for the celebrity image */
+.img-fluid {
+    max-height: 30em;
+    height: auto;
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+    border: 4px solid #4E29FF; /* Call to action border */
+    border-radius: 15px; /* Rounded corners */
+    margin-bottom: 20px; /* Bottom margin */
+}
+
+/* Styles for the file input */
+.custom-file-input {
+    display: none;
+}
+
+.custom-file-label {
+    display: inline-block;
+    background-color: #4E29FF; /* Call to action background */
+    border: 4px solid #4E29FF; /* Thicker call to action border */
+    color: #ffffff; /* White text */
+    border-radius: 10px; /* Rounded corners */
+    padding: 10px 20px;
+    cursor: pointer;
+}
+
+.custom-file-label:hover {
+    background-color: #3B1FCC; /* Darker call to action background */
+    border: 4px solid #3B1FCC; /* Thicker darker call to action border */
 }
