@@ -1,5 +1,6 @@
-import os
 import json
+import os
+
 from img2vec_pytorch import Img2Vec
 from PIL import Image
 
@@ -7,10 +8,10 @@ from PIL import Image
 img2vec = Img2Vec()
 
 # Directory containing celebrity images
-celebrities_folder = 'celebrities'
+celebrities_folder = 'app/celebrities'
 
 # Output JSON file
-output_file = 'celebrity_embeddings.json'
+output_file = 'app/celebrity_embeddings.json'
 
 # List to hold JSON entries
 json_entries = []
@@ -24,6 +25,9 @@ for filename in os.listdir(celebrities_folder):
         # Load image
         img_path = os.path.join(celebrities_folder, filename)
         img = Image.open(img_path)
+
+        if img.mode == 'RGBA':
+                img = img.convert('RGB')
         
         # Get image embedding
         embedding = img2vec.get_vec(img).tolist()
@@ -31,7 +35,7 @@ for filename in os.listdir(celebrities_folder):
         # Create JSON entry
         json_entry = {
             'filename': filename,
-            'celebrity_name': celebrity_name,
+            'name': celebrity_name,
             'embedding': embedding
         }
         

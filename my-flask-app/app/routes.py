@@ -1,14 +1,13 @@
-from flask import Blueprint, render_template, request, redirect, url_for
-from werkzeug.utils import secure_filename
-from PIL import Image
 import io
-from img2vec_pytorch import Img2Vec
-import torch
+import json
 import ssl
-import certifi
-import os
-import numpy as np
 
+import numpy as np
+import torch
+from flask import Blueprint, redirect, render_template, request, url_for
+from img2vec_pytorch import Img2Vec
+from PIL import Image
+from werkzeug.utils import secure_filename
 
 # Configure SSL context
 ssl._create_default_https_context = ssl._create_unverified_context
@@ -16,6 +15,7 @@ ssl._create_default_https_context = ssl._create_unverified_context
 bp = Blueprint('main', __name__)
 
 CELEBRITIES_FOLDER = 'app/celebrities/'
+EMBEDDINGS_FILE = 'app/celebrity_embeddings.json'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 
 def allowed_file(filename):
@@ -32,8 +32,11 @@ def home():
 def about():
     return render_template('about.html')  # Ensure you create about.html in templates directory.
 
+with open(EMBEDDINGS_FILE, 'r') as f:
+                precomputed_embeddings = json.load(f)
+
 @bp.route('/upload', methods=['GET', 'POST'])
-def upload_file():
+def find_doppelganger():
     if request.method == 'POST':
         if 'file' not in request.files:
             return redirect(request.url)
@@ -60,24 +63,17 @@ def upload_file():
             shortest_distance = float('inf')
             closest_celebrity_image = None
 
-            for filename in os.listdir(CELEBRITIES_FOLDER):
-                if allowed_file(filename):
-                    celebrity_image_path = os.path.join(CELEBRITIES_FOLDER, filename)
-                    celebrity_image = Image.open(celebrity_image_path)
-                    
-                    # Remove the fourth channel if it exists
-                    if celebrity_image.mode == 'RGBA':
-                        celebrity_image = celebrity_image.convert('RGB')
-                    
-                    # Convert celebrity image to vector
-                    celebrity_image_vector = img2vec.get_vec(celebrity_image)
-                    
-                    # Calculate Euclidean distance
-                    distance = calculate_euclidean_distance(uploaded_image_vector, celebrity_image_vector)
-                    
-                    if distance < shortest_distance:
-                        shortest_distance = distance
-                        closest_celebrity_image = filename
+            # Load precomputed embeddings
+            for entry in precomputed_embeddings:
+                celebrity_image_vector = np.array(entry['embedding'])
+                
+                # Calculate Euclidean distance
+                distance = calculate_euclidean_distance(uploaded_image_vector, celebrity_image_vector)
+                
+                if distance < shortest_distance:
+                    shortest_distance = distance
+                    closest_celebrity_image = entry['filename']
+                    closest_celebrity_name = entry['name']
 
             # Do something with the processed image
             # For now, we'll just return a success message
