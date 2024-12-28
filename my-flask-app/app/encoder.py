@@ -8,7 +8,7 @@ from PIL import Image
 img2vec = Img2Vec()
 
 # Directory containing celebrity images
-celebrities_folder = 'app/celebrities'
+celebrities_folder = 'app/static/celebrities'
 
 # Output JSON file
 output_file = 'app/celebrity_embeddings.json'
@@ -20,7 +20,7 @@ json_entries = []
 for filename in os.listdir(celebrities_folder):
     if filename.endswith(('.png', '.jpg', '.jpeg')):
         # Extract celebrity name from filename
-        celebrity_name = ' '.join(filename.split('_'))
+        celebrity_name = ' '.join(filename.split('_')).rsplit('.', 1)[0]
         
         # Load image
         img_path = os.path.join(celebrities_folder, filename)

@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Result</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+</head>
+<body>
+    <div class="container mt-5">
+        <h1 class="text-center">Results</h1>
+        <div class="card mt-4">
+            <div class="card-body">
+                <h5 class="card-title">Your Celebrity Doppelganger</h5>
+                <img src="{{ url_for('static', filename='celebrities/' + filename) }}" class="img-fluid" alt="Uploaded Image">                <h5 class="card-title mt-4">Closest Celebrity Match</h5>
+                <p class="card-text">Celebrity Name: {{ celebrity_name }}</p>
+                <a href="/" class="btn btn-primary">Upload Another Image</a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

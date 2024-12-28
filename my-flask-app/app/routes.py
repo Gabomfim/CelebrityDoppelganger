@@ -14,7 +14,7 @@ ssl._create_default_https_context = ssl._create_unverified_context
 
 bp = Blueprint('main', __name__)
 
-CELEBRITIES_FOLDER = 'app/celebrities/'
+CELEBRITIES_FOLDER = 'app/static/celebrities/'
 EMBEDDINGS_FILE = 'app/celebrity_embeddings.json'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 
@@ -24,18 +24,10 @@ def allowed_file(filename):
 def calculate_euclidean_distance(vec1, vec2):
     return np.linalg.norm(vec1 - vec2)
 
-@bp.route('/')
-def home():
-    return render_template('base.html')
-
-@bp.route('/about')
-def about():
-    return render_template('about.html')  # Ensure you create about.html in templates directory.
-
 with open(EMBEDDINGS_FILE, 'r') as f:
-                precomputed_embeddings = json.load(f)
+    precomputed_embeddings = json.load(f)
 
-@bp.route('/upload', methods=['GET', 'POST'])
+@bp.route('/', methods=['GET', 'POST'])
 def find_doppelganger():
     if request.method == 'POST':
         if 'file' not in request.files:
@@ -46,16 +38,14 @@ def find_doppelganger():
         if file and allowed_file(file.filename):
             filename = secure_filename(file.filename)
             image = Image.open(io.BytesIO(file.read()))
-            # Process the image here
-            # For example, you can convert it to grayscale
-            # Initialize Img2Vec
+            
             # Remove the fourth channel if it exists
             if image.mode == 'RGBA':
                 image = image.convert('RGB')
 
+            # Initialize Img2Vec
             img2vec = Img2Vec(cuda=torch.cuda.is_available())
 
-            # Convert image to vector
             # Convert uploaded image to vector
             uploaded_image_vector = img2vec.get_vec(image)
 
@@ -75,8 +65,5 @@ def find_doppelganger():
                     closest_celebrity_image = entry['filename']
                     closest_celebrity_name = entry['name']
 
-            # Do something with the processed image
-            # For now, we'll just return a success message
-            print(f'Closest celebrity image: {closest_celebrity_image} with distance: {shortest_distance}')
-            return f'Closest celebrity image: {closest_celebrity_image} with distance: {shortest_distance}'
-    return render_template('upload.html')
+            return render_template('results.html', filename=closest_celebrity_image, celebrity_name=closest_celebrity_name)
+    return render_template('index.html')
