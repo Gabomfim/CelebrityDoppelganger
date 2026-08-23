@@ -194,3 +194,10 @@ pyrightconfig.json
 .ionide
 
 # End of https://www.toptal.com/developers/gitignore/api/python,visualstudiocode
+
+# ML artifacts and credentials
+models/
+wandb/
+*.pt
+*.pth
+.dvc/cache/
