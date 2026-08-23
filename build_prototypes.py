@@ -10,9 +10,11 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
+import boto3
 import lancedb
 import requests
 import torch
+from PIL import Image
 from torch.utils.data import DataLoader
 
 from train import FaceClassifier, FaceDataset, build_eval_transform, discover_images
@@ -163,6 +165,7 @@ def build_prototype_database(
     data_dir: Path,
     database_uri: str,
     metadata_cache_path: Path | None = None,
+    photo_s3_prefix: str | None = None,
     batch_size: int = 128,
     num_workers: int = 4,
     offline_metadata: bool = False,
@@ -179,7 +182,7 @@ def build_prototype_database(
     paths, labels, discovered_names = discover_images(data_dir)
     if discovered_names != class_names:
         raise ValueError("Checkpoint class order does not match the current dataset")
-    model = FaceClassifier(len(class_names), int(state["config"]["embedding_dim"]))
+    model = FaceClassifier(len(class_names), int(state["config"]["embedding_dim"]), pretrained=None)
     model.load_state_dict(state["model_state_dict"])
     model.to(device).eval()
     loader = DataLoader(
@@ -208,6 +211,9 @@ def build_prototype_database(
                 "class_name": class_name,
                 "vector": prototype.tolist(),
                 "image_count": counts[label],
+                "photo_s3_uri": upload_reference_photo(
+                    paths[labels.index(label)], class_name, photo_s3_prefix
+                ),
                 **metadata[class_name],
             }
         )
@@ -228,12 +234,32 @@ def build_prototype_database(
     return database_uri
 
 
+def upload_reference_photo(
+    source_path: Path, class_name: str, photo_s3_prefix: str | None
+) -> str | None:
+    if not photo_s3_prefix:
+        return None
+    if not photo_s3_prefix.startswith("s3://"):
+        raise ValueError("photo_s3_prefix must be an s3:// URI")
+    location = photo_s3_prefix.removeprefix("s3://").rstrip("/")
+    bucket, prefix = location.split("/", 1)
+    key = f"{prefix}/{class_name}{source_path.suffix.lower()}"
+    boto3.client("s3").upload_file(
+        str(source_path),
+        bucket,
+        key,
+        ExtraArgs={"ContentType": Image.open(source_path).get_format_mimetype()},
+    )
+    return f"s3://{bucket}/{key}"
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument("--data-dir", type=Path, default=Path("data/source_dataset"))
     parser.add_argument("--database-uri", default="models/prototypes.lancedb")
     parser.add_argument("--metadata-cache", type=Path, default=Path("models/person_metadata.json"))
+    parser.add_argument("--photo-s3-prefix", default=None)
     parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--offline-metadata", action="store_true")
@@ -247,6 +273,7 @@ if __name__ == "__main__":
         arguments.data_dir,
         arguments.database_uri,
         arguments.metadata_cache,
+        arguments.photo_s3_prefix,
         arguments.batch_size,
         arguments.num_workers,
         arguments.offline_metadata,

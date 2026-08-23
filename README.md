@@ -30,16 +30,11 @@ model is logged as a versioned W&B model artifact.
 
 ## Modal GPU training
 
-Authenticate once with `uv run modal setup`, then create the W&B secret without putting the key in
-Git:
+Authenticate once and create the W&B secret without putting the key in Git. AWS access uses Modal
+OIDC to assume `CelebrityTwinModalTrainingRole`; no long-lived AWS key is stored in Modal:
 
 ```bash
 uv run modal secret create wandb-secret WANDB_API_KEY=YOUR_KEY
-uv run modal secret create aws-secret \
-  AWS_ACCESS_KEY_ID=YOUR_KEY_ID \
-  AWS_SECRET_ACCESS_KEY=YOUR_SECRET \
-  AWS_DEFAULT_REGION=us-east-1 \
-  PROTOTYPE_DATABASE_URI=s3://YOUR_BUCKET/celebrity-doppelganger/prototypes.lancedb
 uv run modal run modal_train.py --epochs 30 --run-name supcon-v1
 uv run modal volume get celebrity-doppelganger-models supcon-v1/celebrity_face_classifier.pt models/celebrity_face_classifier.pt
 ```
@@ -54,16 +49,16 @@ To rebuild prototypes locally from a versioned checkpoint:
 ```bash
 uv run python build_prototypes.py \
   --checkpoint models/celebrity_face_classifier.pt \
-  --database-uri s3://YOUR_BUCKET/celebrity-doppelganger/prototypes.lancedb
+  --database-uri s3://YOUR_BUCKET/celebrity-doppelganger/prototypes.lancedb \
+  --photo-s3-prefix s3://YOUR_BUCKET/celebrity-doppelganger/photos
 ```
 
 Metadata is cached in the database directory as `person_metadata.json`, so interrupted enrichment
 resumes without repeating completed Wikidata requests. Use `--offline-metadata` when network access
 is unavailable; unresolved fields remain null and are never guessed.
 
-For Modal, create an `aws-secret` containing `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`,
-`AWS_DEFAULT_REGION`, and `PROTOTYPE_DATABASE_URI`. Prefer temporary credentials or an IAM role with
-access restricted to the selected S3 prefix.
+The AWS trust policy is restricted to the configured Modal workspace, app, and `train_remote`
+function. The assumed role can access only the project bucket.
 
 ## Data and model versioning
 
@@ -78,3 +73,41 @@ uv run dvc push
 
 Run quality checks with `uv run ruff format --check .`, `uv run ruff check .`, and
 `uv run pytest`.
+
+## Private selfie web service
+
+The FastAPI service accepts JPEG, PNG, or WebP bytes directly into memory, rejects requests over
+10 MB, detects and crops a face, applies the training evaluation transform, generates an embedding,
+and queries ten prototype neighbors. It returns only the best three results. User images are never
+written to disk or retained.
+
+```bash
+MODEL_CHECKPOINT=models/celebrity_face_classifier.pt \
+PROTOTYPE_DATABASE_URI=s3://YOUR_BUCKET/celebrity-doppelganger/prototypes.lancedb \
+SOURCE_DATASET_DIR=data/source_dataset \
+LINKEDIN_URL=https://www.linkedin.com/in/gabrielabsilveira/ \
+uv run uvicorn api:app --host 0.0.0.0 --port 8000
+```
+
+### Docker
+
+Copy `.env.example` to `.env`, fill in the non-secret resource URLs, and use AWS credentials from
+your shell for local development. The production container runs as a non-root user with a read-only
+filesystem and reads the model, prototype table, and celebrity reference photos from S3.
+
+```bash
+docker compose up --build
+```
+
+Do not place long-lived AWS keys in `.env` in production. The published ECS task should use a
+least-privilege IAM task role and AWS Secrets Manager for `LINKEDIN_URL` or any future secrets.
+
+### CI/CD
+
+GitHub Actions runs locked-environment Ruff checks, tests, and a production Docker build for pull
+requests and `main`. Successful `main` builds use GitHub OIDC to publish an immutable commit-SHA
+image to ECR and perform a monitored ECS rolling deployment.
+
+Configure these GitHub production-environment variables after provisioning AWS:
+`AWS_ROLE_ARN`, `AWS_REGION`, `ECR_REPOSITORY`, `ECS_CLUSTER`, `ECS_SERVICE`,
+`ECS_TASK_DEFINITION`, and `ECS_CONTAINER_NAME`.

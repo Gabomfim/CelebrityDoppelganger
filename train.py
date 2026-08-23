@@ -194,9 +194,11 @@ class BalancedBatchSampler(Sampler[list[int]]):
 
 
 class FaceClassifier(nn.Module):
-    def __init__(self, num_classes: int, embedding_dim: int = 256) -> None:
+    def __init__(
+        self, num_classes: int, embedding_dim: int = 256, pretrained: str | None = "vggface2"
+    ) -> None:
         super().__init__()
-        self.backbone = InceptionResnetV1(pretrained="vggface2", classify=False)
+        self.backbone = InceptionResnetV1(pretrained=pretrained, classify=False)
         self.projector = nn.Sequential(
             nn.Linear(512, 512),
             nn.ReLU(inplace=True),

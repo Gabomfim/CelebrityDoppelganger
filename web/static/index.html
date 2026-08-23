@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="description" content="Take a private selfie and meet your celebrity twins." />
+    <title>Celebrity Twin — Who's your famous lookalike?</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,700;9..144,900&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="ambient ambient-one"></div><div class="ambient ambient-two"></div>
+    <header class="nav shell">
+      <a class="brand" href="/" aria-label="Celebrity Twin home"><span>★</span> Celebrity Twin</a>
+      <nav aria-label="Project links">
+        <a id="github-link" href="https://github.com/Gabomfim/CelebrityDoppelganger" target="_blank" rel="noreferrer">GitHub</a>
+        <a id="linkedin-link" href="https://www.linkedin.com/in/gabrielabsilveira/" target="_blank" rel="noreferrer">LinkedIn</a>
+      </nav>
+    </header>
+
+    <main class="shell">
+      <section class="hero">
+        <div class="eyebrow">AI-powered face matching</div>
+        <h1>Meet your <em>celebrity twins.</em></h1>
+        <p>One selfie. Ten nearest faces. Your three most convincing famous lookalikes.</p>
+        <div class="privacy-pill"><span class="pulse"></span><strong>Private by design</strong> — your photo is processed in memory and never stored on our server.</div>
+      </section>
+
+      <section class="studio" aria-labelledby="studio-title">
+        <div class="studio-copy">
+          <span class="step">01</span>
+          <h2 id="studio-title">Put your best face forward</h2>
+          <p>Look straight ahead, remove sunglasses, and choose even lighting. Keep only one face in the frame.</p>
+          <ul><li>Center your face in the guide</li><li>Use natural, front-facing light</li><li>Smile—or serve your best red carpet look</li></ul>
+        </div>
+
+        <div class="capture-card">
+          <div id="camera-stage" class="camera-stage">
+            <video id="camera" playsinline autoplay muted></video>
+            <img id="preview" alt="Selected selfie preview" hidden />
+            <div class="face-guide" aria-hidden="true"><div class="guide-label">Place your face here</div></div>
+            <div id="camera-placeholder" class="camera-placeholder"><span>✦</span><p>Ready for your close-up?</p></div>
+          </div>
+          <canvas id="canvas" hidden></canvas>
+          <div id="status" class="status" role="status" aria-live="polite"></div>
+          <div class="actions">
+            <button id="camera-button" class="button button-primary"><span>◉</span> Start camera</button>
+            <button id="snap-button" class="button button-primary" hidden><span>✦</span> Take selfie</button>
+            <label class="button button-secondary" for="upload"><span>↑</span> Upload photo</label>
+            <input id="upload" type="file" accept="image/jpeg,image/png,image/webp" hidden />
+          </div>
+          <button id="match-button" class="button match-button" hidden>Find my celebrity twins <span>→</span></button>
+          <p class="micro-privacy">🔒 The image is discarded immediately after matching. We don't create accounts or retain biometric data.</p>
+        </div>
+      </section>
+
+      <section id="results" class="results" hidden>
+        <div class="results-heading"><span class="step">02</span><div><p class="eyebrow">The verdict is in</p><h2>Your famous lookalikes</h2></div></div>
+        <div id="result-grid" class="result-grid"></div>
+        <button id="again-button" class="button button-secondary again-button">Try another photo</button>
+      </section>
+    </main>
+
+    <footer class="shell"><p>Made with curiosity, contrastive learning, and absolutely no photo storage.</p><div><a href="https://github.com/Gabomfim/CelebrityDoppelganger" target="_blank" rel="noreferrer">Source code ↗</a><a id="footer-linkedin" href="https://www.linkedin.com/in/gabrielabsilveira/" target="_blank" rel="noreferrer">LinkedIn ↗</a></div></footer>
+    <script src="/app.js" defer></script>
+  </body>
+</html>

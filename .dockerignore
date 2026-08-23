@@ -1,0 +1,14 @@
+.git
+.dvc/cache
+.venv
+__pycache__
+*.pyc
+*.pt
+*.pth
+data
+models
+wandb
+my-flask-app
+tests
+*.ipynb
+.env
