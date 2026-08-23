@@ -38,20 +38,24 @@
 
         <div class="capture-card">
           <div id="camera-stage" class="camera-stage">
+            <div class="stage-chrome" aria-hidden="true">
+              <span><i></i> Private session</span>
+              <span>Face studio</span>
+            </div>
             <video id="camera" playsinline autoplay muted></video>
             <img id="preview" alt="Selected selfie preview" hidden />
             <div class="face-guide" aria-hidden="true"><div class="guide-label">Place your face here</div></div>
-            <div id="camera-placeholder" class="camera-placeholder"><span>✦</span><p>Ready for your close-up?</p></div>
+            <div id="camera-placeholder" class="camera-placeholder"><span>✦</span><p>Ready for your close-up?</p><small>Tap “Start camera” and allow access when asked.</small></div>
           </div>
           <canvas id="canvas" hidden></canvas>
           <div id="status" class="status" role="status" aria-live="polite"></div>
           <div class="actions">
-            <button id="camera-button" class="button button-primary"><span>◉</span> Start camera</button>
-            <button id="snap-button" class="button button-primary" hidden><span>✦</span> Take selfie</button>
+            <button id="camera-button" type="button" class="button button-primary"><span>◉</span> Start camera</button>
+            <button id="snap-button" type="button" class="button button-primary" hidden disabled><span>✦</span> Take selfie</button>
             <label class="button button-secondary" for="upload"><span>↑</span> Upload photo</label>
             <input id="upload" type="file" accept="image/jpeg,image/png,image/webp" hidden />
           </div>
-          <button id="match-button" class="button match-button" hidden>Find my celebrity twins <span>→</span></button>
+          <button id="match-button" type="button" class="button match-button" hidden>Find my celebrity twins <span>→</span></button>
           <p class="micro-privacy">🔒 The image is discarded immediately after matching. We don't create accounts or retain biometric data.</p>
         </div>
       </section>
@@ -59,7 +63,7 @@
       <section id="results" class="results" hidden>
         <div class="results-heading"><span class="step">02</span><div><p class="eyebrow">The verdict is in</p><h2>Your famous lookalikes</h2></div></div>
         <div id="result-grid" class="result-grid"></div>
-        <button id="again-button" class="button button-secondary again-button">Try another photo</button>
+        <button id="again-button" type="button" class="button button-secondary again-button">Try another photo</button>
       </section>
     </main>
 

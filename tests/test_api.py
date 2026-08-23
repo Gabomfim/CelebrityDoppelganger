@@ -35,3 +35,13 @@ def test_social_links_are_configured(monkeypatch):
         response = client.get("/api/config")
     assert response.json()["linkedin_url"] == LINKEDIN_URL
     assert "github.com/Gabomfim/CelebrityDoppelganger" in response.json()["github_url"]
+
+
+def test_camera_controls_have_safe_initial_state():
+    with TestClient(app) as client:
+        html = client.get("/").text
+        css = client.get("/styles.css").text
+    assert 'id="camera-button"' in html
+    assert 'id="snap-button"' in html and "hidden disabled" in html
+    assert 'id="match-button"' in html and "hidden" in html
+    assert "[hidden] { display:none !important; }" in css
