@@ -4,6 +4,11 @@ Find your celebrity lookalike. This repository includes a PyTorch training pipel
 fine-tunes a VGGFace2-pretrained InceptionResnetV1 using supervised contrastive learning plus
 cross-entropy classification.
 
+The project gateway will be available at
+[`gabomfim.github.io/CelebrityDoppelganger`](https://gabomfim.github.io/CelebrityDoppelganger/)
+and forwards visitors to the AWS-hosted application. The current CloudFront URL is
+[`d3tc24jtdkcl2p.cloudfront.net`](https://d3tc24jtdkcl2p.cloudfront.net/).
+
 ## Reproducible training
 
 The dataset must use ImageFolder-style directories (`one_directory_per_identity/image.jpg`).
@@ -111,3 +116,8 @@ image to ECR and perform a monitored ECS rolling deployment.
 Configure these GitHub production-environment variables after provisioning AWS:
 `AWS_ROLE_ARN`, `AWS_REGION`, `ECR_REPOSITORY`, `ECS_CLUSTER`, `ECS_SERVICE`,
 `ECS_TASK_DEFINITION`, and `ECS_CONTAINER_NAME`.
+
+Infrastructure is defined in `infra/aws/cloudformation.yml`. It provisions the network, public
+HTTPS CloudFront endpoint, load balancer, ECS Fargate service, least-privilege task roles, and the
+GitHub OIDC deployment role. The service intentionally starts with zero tasks; scale it to one only
+after the trained checkpoint and prototype database have been published to S3.
