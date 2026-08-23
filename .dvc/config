@@ -1,0 +1,5 @@
+[core]
+    remote = storage
+['remote "storage"']
+    url = s3://celebrity-twin-832271495954-us-east-1/dvc
+    profile = celebrity-twin

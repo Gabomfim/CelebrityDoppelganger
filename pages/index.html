@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#6d28d9" />
+    <meta
+      name="description"
+      content="Celebrity Doppelganger — discover which famous faces look most like you."
+    />
+    <meta http-equiv="refresh" content="3;url=https://d3tc24jtdkcl2p.cloudfront.net/" />
+    <title>Celebrity Doppelganger</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family:
+          Inter, ui-rounded, "SF Pro Rounded", system-ui, -apple-system, sans-serif;
+        background: #17070c;
+        color: #fff;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        min-height: 100svh;
+        margin: 0;
+        display: grid;
+        place-items: center;
+        overflow: hidden;
+        background:
+          radial-gradient(circle at 15% 20%, #9f123980, transparent 33%),
+          radial-gradient(circle at 85% 80%, #d4a72c70, transparent 34%), #17070c;
+      }
+
+      main {
+        width: min(90vw, 42rem);
+        padding: clamp(2rem, 7vw, 4rem);
+        text-align: center;
+        border: 1px solid #ffffff29;
+        border-radius: 2rem;
+        background: #ffffff12;
+        box-shadow: 0 2rem 5rem #0008;
+        backdrop-filter: blur(18px);
+      }
+
+      .sparkle {
+        display: block;
+        font-size: clamp(3rem, 12vw, 6rem);
+        filter: drop-shadow(0 0 1.5rem #f0abfcaa);
+        animation: float 1.8s ease-in-out infinite alternate;
+      }
+
+      h1 {
+        margin: 0.5rem 0;
+        font-size: clamp(2rem, 8vw, 4rem);
+        line-height: 0.95;
+        letter-spacing: -0.06em;
+      }
+
+      p {
+        margin: 1.25rem auto 2rem;
+        max-width: 30rem;
+        color: #f8e7bf;
+        font-size: clamp(1rem, 3vw, 1.2rem);
+        line-height: 1.55;
+      }
+
+      a {
+        display: inline-block;
+        padding: 0.9rem 1.4rem;
+        border-radius: 999px;
+        color: #4a101f;
+        background: linear-gradient(135deg, #f6d477, #d4a72c);
+        font-weight: 800;
+        text-decoration: none;
+        transition: transform 160ms ease;
+      }
+
+      a:hover,
+      a:focus-visible {
+        transform: translateY(-2px) scale(1.02);
+      }
+
+      @keyframes float {
+        to {
+          transform: translateY(-0.5rem) rotate(5deg);
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .sparkle {
+          animation: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <span class="sparkle" aria-hidden="true">✨</span>
+      <h1>Meet your celebrity twin</h1>
+      <p>You’re heading to the selfie experience. Your photo is processed in memory and never stored.</p>
+      <a href="https://d3tc24jtdkcl2p.cloudfront.net/">Open Celebrity Doppelganger</a>
+    </main>
+  </body>
+</html>
