@@ -1,8 +1,11 @@
 import base64
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
 from api import LINKEDIN_URL, app
+
+PROJECT_ROOT = Path(__file__).parents[1]
 
 
 class StubMatcher:
@@ -95,6 +98,11 @@ def test_analytics_rejects_unknown_events():
     assert response.status_code == 400
 
 
+def test_production_server_does_not_log_visitor_ip_addresses():
+    dockerfile = (PROJECT_ROOT / "Dockerfile").read_text()
+    assert '"--no-access-log"' in dockerfile
+
+
 def test_camera_controls_have_safe_initial_state():
     with TestClient(app) as client:
         html = client.get("/").text
@@ -111,4 +119,6 @@ def test_camera_controls_have_safe_initial_state():
     assert "Public figure" not in client.get("/app.js").text
     assert "A celebrated face with an uncanny resemblance" not in client.get("/app.js").text
     assert "Settings → Websites → Camera" in client.get("/app.js").text
+    assert "waitForDecodedVideoFrame" in client.get("/app.js").text
+    assert '"black_preview"' in client.get("/app.js").text
     assert "[hidden] { display:none !important; }" in css
