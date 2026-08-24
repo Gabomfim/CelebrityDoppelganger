@@ -52,6 +52,7 @@ class TrainConfig:
     run_name: str | None = None
     resume: str | None = None
     offline: bool = False
+    full_data: bool = False
 
 
 def seed_everything(seed: int) -> None:
@@ -326,9 +327,12 @@ def train(config: TrainConfig) -> Path:
         else "cpu"
     )
     paths, labels, class_names = discover_images(Path(config.data_dir))
-    train_indices, validation_indices = stratified_split(
-        labels, config.validation_fraction, config.seed
-    )
+    if config.full_data:
+        train_indices, validation_indices = list(range(len(paths))), []
+    else:
+        train_indices, validation_indices = stratified_split(
+            labels, config.validation_fraction, config.seed
+        )
     train_paths = [paths[index] for index in train_indices]
     train_labels = [labels[index] for index in train_indices]
     validation_paths = [paths[index] for index in validation_indices]
@@ -349,11 +353,15 @@ def train(config: TrainConfig) -> Path:
         batch_sampler=sampler,
         **loader_kwargs,
     )
-    validation_loader = DataLoader(
-        FaceDataset(validation_paths, validation_labels, build_eval_transform()),
-        batch_size=effective_batch_size,
-        shuffle=False,
-        **loader_kwargs,
+    validation_loader = (
+        None
+        if config.full_data
+        else DataLoader(
+            FaceDataset(validation_paths, validation_labels, build_eval_transform()),
+            batch_size=effective_batch_size,
+            shuffle=False,
+            **loader_kwargs,
+        )
     )
     model = FaceClassifier(len(class_names), config.embedding_dim).to(device)
     optimizer = make_optimizer(model, config)
@@ -378,7 +386,12 @@ def train(config: TrainConfig) -> Path:
         name=config.run_name,
         config=asdict(config),
         mode="offline" if config.offline else os.getenv("WANDB_MODE", "online"),
-        tags=["supervised-contrastive", "facenet", "vggface2"],
+        tags=[
+            "supervised-contrastive",
+            "facenet",
+            "vggface2",
+            "full-data-refit" if config.full_data else "evaluation-split",
+        ],
     )
     run.config.update(
         {
@@ -392,33 +405,47 @@ def train(config: TrainConfig) -> Path:
     for epoch in range(start_epoch, config.epochs):
         sampler.set_epoch(epoch)
         train_metrics = run_epoch(model, train_loader, device, config, optimizer, scaler)
-        validation_metrics = run_epoch(model, validation_loader, device, config)
+        validation_metrics = (
+            None
+            if validation_loader is None
+            else run_epoch(model, validation_loader, device, config)
+        )
         scheduler.step()
         metrics = {
             **{f"train/{key}": value for key, value in train_metrics.items()},
-            **{f"validation/{key}": value for key, value in validation_metrics.items()},
             "epoch": epoch,
             "learning_rate/backbone": optimizer.param_groups[0]["lr"],
             "learning_rate/head": optimizer.param_groups[1]["lr"],
         }
+        if validation_metrics is not None:
+            metrics.update(
+                {f"validation/{key}": value for key, value in validation_metrics.items()}
+            )
         run.log(metrics, step=epoch)
         payload = checkpoint_payload(
             model, optimizer, scheduler, epoch, best_accuracy, class_names, config
         )
         epoch_path = output_dir / f"checkpoint-{epoch + 1:03d}.pt"
         torch.save(payload, epoch_path)
-        current_accuracy = validation_metrics["accuracy"]
-        if current_accuracy > best_accuracy:
+        current_accuracy = validation_metrics["accuracy"] if validation_metrics else None
+        if config.full_data:
+            torch.save(payload, best_path)
+        elif current_accuracy is not None and current_accuracy > best_accuracy:
             best_accuracy, stale_epochs = current_accuracy, 0
             payload["best_validation_accuracy"] = best_accuracy
             torch.save(payload, best_path)
         else:
             stale_epochs += 1
-        print(
-            f"epoch={epoch + 1}/{config.epochs} train_loss={train_metrics['loss']:.4f} "
-            f"val_loss={validation_metrics['loss']:.4f} val_acc={current_accuracy:.4f}"
+        validation_summary = (
+            f" val_loss={validation_metrics['loss']:.4f} val_acc={current_accuracy:.4f}"
+            if validation_metrics is not None and current_accuracy is not None
+            else " full_data=true"
         )
-        if stale_epochs >= config.patience:
+        print(
+            f"epoch={epoch + 1}/{config.epochs} train_loss={train_metrics['loss']:.4f}"
+            f"{validation_summary}"
+        )
+        if not config.full_data and stale_epochs >= config.patience:
             print(f"Early stopping after {config.patience} epochs without improvement")
             break
     best_state = torch.load(best_path, map_location="cpu", weights_only=False)
@@ -430,14 +457,19 @@ def train(config: TrainConfig) -> Path:
         metadata={
             "format_version": 1,
             "backbone": "InceptionResnetV1-vggface2",
-            "best_validation_accuracy": best_state["best_validation_accuracy"],
+            "best_validation_accuracy": (
+                None if config.full_data else best_state["best_validation_accuracy"]
+            ),
+            "training_scope": "full_dataset" if config.full_data else "evaluation_split",
             "num_classes": len(class_names),
         },
     )
     artifact.add_file(str(final_path))
     artifact.add_file(str(output_dir / "classes.json"))
     run.log_artifact(artifact, aliases=["latest", "best"])
-    run.summary["best_validation_accuracy"] = best_state["best_validation_accuracy"]
+    if not config.full_data:
+        run.summary["best_validation_accuracy"] = best_state["best_validation_accuracy"]
+    run.summary["training_scope"] = "full_dataset" if config.full_data else "evaluation_split"
     run.finish()
     return final_path
 

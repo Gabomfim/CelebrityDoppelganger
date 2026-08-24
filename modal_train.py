@@ -69,7 +69,10 @@ def configure_aws_identity() -> None:
     },
 )
 def train_remote(
-    epochs: int = 30, run_name: str | None = None, prototypes_only: bool = False
+    epochs: int = 30,
+    run_name: str | None = None,
+    prototypes_only: bool = False,
+    full_data: bool = False,
 ) -> str:
     import sys
 
@@ -93,6 +96,7 @@ def train_remote(
                 epochs=epochs,
                 num_workers=8,
                 run_name=run_name,
+                full_data=full_data,
             )
         )
     build_prototype_database(
@@ -113,6 +117,11 @@ def train_remote(
 
 
 @app.local_entrypoint()
-def main(epochs: int = 30, run_name: str | None = None, prototypes_only: bool = False) -> None:
-    result = train_remote.remote(epochs, run_name, prototypes_only)
+def main(
+    epochs: int = 30,
+    run_name: str | None = None,
+    prototypes_only: bool = False,
+    full_data: bool = False,
+) -> None:
+    result = train_remote.remote(epochs, run_name, prototypes_only, full_data)
     print(f"Final model saved in Modal Volume: {result}")
