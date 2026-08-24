@@ -80,8 +80,9 @@ h1 em { color:var(--pink);font-style:normal;white-space:nowrap; }
 .curiosity { color:var(--muted);line-height:1.55;font-size:.9rem; }
 .wiki { font-weight:800;font-size:.85rem;text-decoration:none; }
 .again-button { width:max-content;margin:32px auto 0; }
-footer { display:flex;justify-content:space-between;gap:20px;padding:36px 0;margin-top:40px;border-top:1px solid var(--line);color:var(--muted);font-size:.82rem; }
-footer div { display:flex;gap:20px; }
+footer { display:flex;align-items:center;justify-content:space-between;gap:24px;padding:36px 0;margin-top:40px;border-top:1px solid var(--line);color:var(--muted);font-size:.82rem; }
+footer p { margin:0;line-height:1.5; }
+footer div { display:flex;align-items:center;justify-content:flex-end;gap:20px;white-space:nowrap; }
 @media (max-width:850px) { .hero{padding-top:44px}.studio{grid-template-columns:1fr;gap:35px;padding:30px}.studio-copy{text-align:center}.studio-copy .step{margin:auto}.studio-copy ul{text-align:left;max-width:360px;margin:auto}.result-grid{grid-template-columns:1fr 1fr}.match-card:last-child{grid-column:1/-1;width:calc(50% - 11px);margin:auto}.match-card:first-child{transform:none} }
 @media (max-width:560px) { .shell{width:min(100% - 24px,1160px)}.nav{padding:16px 0}.nav nav{gap:12px}.nav nav a{font-size:.8rem}.brand{font-size:.92rem}.brand span{width:27px;height:27px}.hero{padding:38px 0 44px}h1{font-size:clamp(3rem,15vw,4.3rem)}h1 em{white-space:normal}.privacy-pill{border-radius:18px;line-height:1.35;align-items:flex-start}.studio{padding:16px;border-radius:24px}.studio-copy{padding:18px 8px 0}.studio-copy h2{font-size:2.7rem}.camera-stage{border-radius:19px;aspect-ratio:3/4}.face-guide{inset:13% 20% 18%}.stage-chrome{top:12px;left:12px;right:12px}.stage-chrome span:last-child{display:none}.camera-placeholder{padding-inline:15%}.actions{grid-template-columns:1fr}.button{min-height:54px}.result-grid{grid-template-columns:1fr}.match-card:last-child{grid-column:auto;width:auto}.results{padding-top:80px}.results-heading{gap:13px}.results h2{font-size:2.8rem}footer{flex-direction:column;text-align:center;align-items:center} }
 @media (prefers-reduced-motion:reduce) { html{scroll-behavior:auto}.button{transition:none} }
