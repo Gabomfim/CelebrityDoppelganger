@@ -20,6 +20,7 @@ image = (
         "boto3>=1.35,<2",
         "lancedb==0.21.2",
         "numpy>=1.26,<3",
+        "pandas>=2.2,<3",
         "pillow>=10,<12",
         "pyarrow>=18,<23",
         "requests>=2.32,<3",
@@ -31,6 +32,23 @@ image = (
     .add_local_file(PROJECT_ROOT / "build_prototypes.py", "/app/build_prototypes.py")
     .add_local_dir(LOCAL_DATASET, REMOTE_DATASET)
 )
+
+
+def configure_aws_identity() -> None:
+    import boto3
+
+    credentials = boto3.client("sts").assume_role_with_web_identity(
+        RoleArn=os.environ["AWS_ROLE_ARN"],
+        RoleSessionName="celebrity-twin-modal-training",
+        WebIdentityToken=os.environ["MODAL_IDENTITY_TOKEN"],
+    )["Credentials"]
+    os.environ.update(
+        {
+            "AWS_ACCESS_KEY_ID": credentials["AccessKeyId"],
+            "AWS_SECRET_ACCESS_KEY": credentials["SecretAccessKey"],
+            "AWS_SESSION_TOKEN": credentials["SessionToken"],
+        }
+    )
 
 
 @app.function(
@@ -50,37 +68,33 @@ image = (
         "WANDB_ENTITY": "gabomfim-unicamp",
     },
 )
-def train_remote(epochs: int = 30, run_name: str | None = None) -> str:
+def train_remote(
+    epochs: int = 30, run_name: str | None = None, prototypes_only: bool = False
+) -> str:
     import sys
 
     import boto3
 
-    credentials = boto3.client("sts").assume_role_with_web_identity(
-        RoleArn=os.environ["AWS_ROLE_ARN"],
-        RoleSessionName="celebrity-twin-modal-training",
-        WebIdentityToken=os.environ["MODAL_IDENTITY_TOKEN"],
-    )["Credentials"]
-    os.environ.update(
-        {
-            "AWS_ACCESS_KEY_ID": credentials["AccessKeyId"],
-            "AWS_SECRET_ACCESS_KEY": credentials["SecretAccessKey"],
-            "AWS_SESSION_TOKEN": credentials["SessionToken"],
-        }
-    )
+    configure_aws_identity()
     sys.path.insert(0, "/app")
     from build_prototypes import build_prototype_database
     from train import TrainConfig, train
 
     run_output = Path(REMOTE_MODELS) / (run_name or "latest")
-    final_path = train(
-        TrainConfig(
-            data_dir=REMOTE_DATASET,
-            output_dir=str(run_output),
-            epochs=epochs,
-            num_workers=8,
-            run_name=run_name,
+    final_path = run_output / "celebrity_face_classifier.pt"
+    if prototypes_only:
+        if not final_path.is_file():
+            raise FileNotFoundError(f"Checkpoint not found in Modal Volume: {final_path}")
+    else:
+        final_path = train(
+            TrainConfig(
+                data_dir=REMOTE_DATASET,
+                output_dir=str(run_output),
+                epochs=epochs,
+                num_workers=8,
+                run_name=run_name,
+            )
         )
-    )
     build_prototype_database(
         final_path,
         Path(REMOTE_DATASET),
@@ -99,5 +113,6 @@ def train_remote(epochs: int = 30, run_name: str | None = None) -> str:
 
 
 @app.local_entrypoint()
-def main(epochs: int = 30, run_name: str | None = None) -> None:
-    print(f"Final model saved in Modal Volume: {train_remote.remote(epochs, run_name)}")
+def main(epochs: int = 30, run_name: str | None = None, prototypes_only: bool = False) -> None:
+    result = train_remote.remote(epochs, run_name, prototypes_only)
+    print(f"Final model saved in Modal Volume: {result}")

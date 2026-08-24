@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from PIL import Image, UnidentifiedImageError
 
-from train import FaceClassifier, build_eval_transform
+from train import FaceClassifier, build_eval_transform, load_face_classifier_state
 
 PROJECT_ROOT = Path(__file__).parent
 STATIC_DIR = PROJECT_ROOT / "web" / "static"
@@ -44,7 +44,7 @@ class CelebrityMatcher:
         self.model = FaceClassifier(
             len(self.class_names), int(state["config"]["embedding_dim"]), pretrained=None
         )
-        self.model.load_state_dict(state["model_state_dict"])
+        load_face_classifier_state(self.model, state["model_state_dict"])
         self.model.to(self.device).eval()
         self.detector = MTCNN(keep_all=False, device=self.device, post_process=False)
         self.transform = build_eval_transform()

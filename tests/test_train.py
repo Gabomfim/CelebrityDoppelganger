@@ -1,7 +1,14 @@
+import pytest
 import torch
+from torch import nn
 
 from build_prototypes import fallback_display_name
-from train import BalancedBatchSampler, stratified_split, supervised_contrastive_loss
+from train import (
+    BalancedBatchSampler,
+    load_face_classifier_state,
+    stratified_split,
+    supervised_contrastive_loss,
+)
 
 
 def test_supervised_contrastive_loss_is_finite_and_differentiable():
@@ -30,3 +37,15 @@ def test_stratified_split_keeps_singletons_in_training():
 
 def test_fallback_display_name_removes_underscores():
     assert fallback_display_name("samuel_l_jackson") == "Samuel L Jackson"
+
+
+def test_checkpoint_loader_ignores_only_unused_facenet_logits():
+    model = nn.Linear(2, 1)
+    checkpoint = {
+        **model.state_dict(),
+        "backbone.logits.weight": torch.randn(2, 2),
+        "backbone.logits.bias": torch.randn(2),
+    }
+    load_face_classifier_state(model, checkpoint)
+    with pytest.raises(RuntimeError, match="Unexpected checkpoint keys"):
+        load_face_classifier_state(model, {**model.state_dict(), "unexpected": torch.ones(1)})
