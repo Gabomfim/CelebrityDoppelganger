@@ -73,4 +73,5 @@ def test_camera_controls_have_safe_initial_state():
     assert 'id="match-button"' in html and "hidden" in html
     assert 'id="countdown"' in html and 'id="shot-strip"' in html
     assert "Take 3 selfies" in html and "Upload 3 photos" in html
+    assert "Remove sunglasses" in html and "exactly one face" in html
     assert "[hidden] { display:none !important; }" in css
