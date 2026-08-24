@@ -33,7 +33,7 @@ IMAGENET_STD = (0.229, 0.224, 0.225)
 class TrainConfig:
     data_dir: str = "data/source_dataset"
     output_dir: str = "models"
-    epochs: int = 30
+    epochs: int = 60
     batch_size: int = 64
     classes_per_batch: int = 16
     samples_per_class: int = 4
@@ -46,7 +46,7 @@ class TrainConfig:
     embedding_dim: int = 256
     num_workers: int = 4
     seed: int = 42
-    patience: int = 7
+    patience: int = 12
     wandb_project: str = "celebrity-doppelganger"
     wandb_entity: str | None = None
     run_name: str | None = None

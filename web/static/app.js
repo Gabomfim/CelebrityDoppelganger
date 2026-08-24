@@ -290,9 +290,12 @@ function escapeHtml(value) {
 
 function renderResults(matches) {
   resultGrid.innerHTML = matches
-    .map(
-      (match, index) => `<article class="match-card"><div class="match-photo"><img src="${encodeURI(match.photo_url)}" alt="${escapeHtml(match.name)}" loading="lazy"><span class="match-rank">#${index + 1} match</span><span class="similarity">${match.similarity}% twin</span></div><div class="match-copy"><div class="profession">${escapeHtml(match.profession || "Public figure")}</div><h3>${escapeHtml(match.name)}</h3><p class="curiosity">${escapeHtml(match.most_famous_for || match.why_famous || "A celebrated face with an uncanny resemblance to yours.")}</p>${match.wikipedia_url ? `<a class="wiki" href="${encodeURI(match.wikipedia_url)}" target="_blank" rel="noreferrer">Meet ${escapeHtml(match.name)} on Wikipedia ↗</a>` : ""}</div></article>`,
-    )
+    .map((match, index) => {
+      const wikipediaUrl =
+        match.wikipedia_url ||
+        `https://en.wikipedia.org/wiki/Special:Search?search=${encodeURIComponent(match.name)}`;
+      return `<a class="match-card" href="${encodeURI(wikipediaUrl)}" target="_blank" rel="noreferrer" aria-label="Read about ${escapeHtml(match.name)} on Wikipedia"><div class="match-photo"><img src="${encodeURI(match.photo_url)}" alt="${escapeHtml(match.name)}" loading="lazy"><span class="match-rank">#${index + 1} match</span><span class="similarity">${match.similarity}% twin</span></div><div class="match-copy"><div class="profession">${escapeHtml(match.profession || "Biography")}</div><h3>${escapeHtml(match.name)}</h3><p class="curiosity">${escapeHtml(match.why_famous || match.most_famous_for || `${match.name} is known for a notable career in entertainment.`)}</p><span class="wiki">Meet ${escapeHtml(match.name)} on Wikipedia ↗</span></div></a>`;
+    })
     .join("");
 }
 

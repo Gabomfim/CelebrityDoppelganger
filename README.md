@@ -87,6 +87,12 @@ and averages the three normalized embeddings into a temporary user prototype. Th
 queried against the three nearest class prototypes. Images and the user prototype are never written
 to disk or retained.
 
+The deployment model keeps a stratified validation split during fine-tuning. Training runs for up
+to 60 epochs with early stopping after 12 epochs without validation improvement, and deployment
+uses the checkpoint with the highest validation accuracy rather than the final epoch. Once that
+checkpoint is selected, all available class images are used only to calculate the mean celebrity
+prototype embeddings.
+
 ```bash
 MODEL_CHECKPOINT=models/celebrity_face_classifier.pt \
 PROTOTYPE_DATABASE_URI=s3://YOUR_BUCKET/celebrity-doppelganger/prototypes.lancedb \

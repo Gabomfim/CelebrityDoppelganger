@@ -16,7 +16,9 @@ import pyarrow as pa
 import requests
 import torch
 from PIL import Image
+from requests.adapters import HTTPAdapter
 from torch.utils.data import DataLoader
+from urllib3.util.retry import Retry
 
 from train import (
     FaceClassifier,
@@ -26,8 +28,25 @@ from train import (
     load_face_classifier_state,
 )
 
-WIKIDATA_API = "https://www.wikidata.org/w/api.php"
-USER_AGENT = "CelebrityDoppelganger/1.0 (prototype metadata enrichment)"
+WIKIPEDIA_API = "https://en.wikipedia.org/w/api.php"
+USER_AGENT = (
+    "CelebrityDoppelganger/1.0 "
+    "(https://github.com/Gabomfim/CelebrityDoppelganger; prototype metadata enrichment)"
+)
+
+
+def metadata_session() -> requests.Session:
+    session = requests.Session()
+    session.headers.update({"User-Agent": USER_AGENT})
+    retry = Retry(
+        total=6,
+        backoff_factor=1.0,
+        status_forcelist=(429, 500, 502, 503, 504),
+        allowed_methods=frozenset({"GET"}),
+        respect_retry_after_header=True,
+    )
+    session.mount("https://", HTTPAdapter(max_retries=retry))
+    return session
 
 
 def fallback_display_name(class_name: str) -> str:
@@ -36,93 +55,52 @@ def fallback_display_name(class_name: str) -> str:
     return re.sub(r"\s+", " ", normalized).title()
 
 
-def fetch_person_metadata(class_name: str, timeout: float = 15.0) -> dict[str, Any]:
-    """Resolve one identity through Wikidata's search API and English Wikipedia sitelink."""
+def infer_profession(description: str | None) -> str | None:
+    if not description:
+        return None
+    match = re.search(r"\b(?:is|was) (?:an?|the) ([^.]+)", description, flags=re.IGNORECASE)
+    return match.group(1).strip() if match else None
+
+
+def fetch_person_metadata(
+    class_name: str, timeout: float = 20.0, session: requests.Session | None = None
+) -> dict[str, Any]:
+    """Resolve a person through English Wikipedia with biography and canonical page URL."""
     fallback = fallback_display_name(class_name)
-    response = requests.get(
-        WIKIDATA_API,
+    client = session or metadata_session()
+    response = client.get(
+        WIKIPEDIA_API,
         params={
-            "action": "wbsearchentities",
-            "search": fallback,
-            "language": "en",
-            "uselang": "en",
-            "type": "item",
-            "limit": 5,
+            "action": "query",
+            "generator": "search",
+            "gsrsearch": fallback,
+            "gsrnamespace": 0,
+            "gsrlimit": 1,
+            "prop": "extracts|info|pageprops",
+            "inprop": "url",
+            "exintro": 1,
+            "explaintext": 1,
             "format": "json",
         },
-        headers={"User-Agent": USER_AGENT},
         timeout=timeout,
     )
     response.raise_for_status()
-    results = response.json().get("search", [])
-    if not results:
+    pages = response.json().get("query", {}).get("pages", {})
+    if not pages:
         return empty_metadata(fallback)
-    exact = next(
-        (item for item in results if item.get("label", "").casefold() == fallback.casefold()),
-        results[0],
-    )
-    entity_id = exact["id"]
-    entity_response = requests.get(
-        WIKIDATA_API,
-        params={
-            "action": "wbgetentities",
-            "ids": entity_id,
-            "props": "labels|descriptions|claims|sitelinks",
-            "languages": "en",
-            "sitefilter": "enwiki",
-            "format": "json",
-        },
-        headers={"User-Agent": USER_AGENT},
-        timeout=timeout,
-    )
-    entity_response.raise_for_status()
-    entity = entity_response.json()["entities"][entity_id]
-    description = entity.get("descriptions", {}).get("en", {}).get("value")
-    title = entity.get("sitelinks", {}).get("enwiki", {}).get("title")
-    occupation_ids = [
-        claim.get("mainsnak", {}).get("datavalue", {}).get("value", {}).get("id")
-        for claim in entity.get("claims", {}).get("P106", [])
-    ]
-    notable_work_ids = [
-        claim.get("mainsnak", {}).get("datavalue", {}).get("value", {}).get("id")
-        for claim in entity.get("claims", {}).get("P800", [])
-    ]
-    occupations = resolve_entity_labels([item for item in occupation_ids if item], timeout)
-    notable_works = resolve_entity_labels([item for item in notable_work_ids if item], timeout)
-    wikipedia_url = f"https://en.wikipedia.org/wiki/{title.replace(' ', '_')}" if title else None
+    page = next(iter(pages.values()))
+    extract = re.sub(r"\s+", " ", page.get("extract", "")).strip()
+    sentences = re.split(r"(?<=[.!?])\s+", extract)
+    description = " ".join(sentences[:2]) or None
     return {
-        "display_name": entity.get("labels", {}).get("en", {}).get("value", fallback),
+        "display_name": page.get("title", fallback),
         "why_famous": description,
-        "most_famous_for": ", ".join(notable_works) or description,
-        "wikipedia_url": wikipedia_url,
-        "profession": ", ".join(occupations) or None,
-        "wikidata_id": entity_id,
+        "most_famous_for": description,
+        "wikipedia_url": page.get("fullurl"),
+        "profession": infer_profession(description),
+        "wikidata_id": page.get("pageprops", {}).get("wikibase_item"),
         "metadata_status": "resolved",
     }
-
-
-def resolve_entity_labels(entity_ids: list[str], timeout: float) -> list[str]:
-    if not entity_ids:
-        return []
-    response = requests.get(
-        WIKIDATA_API,
-        params={
-            "action": "wbgetentities",
-            "ids": "|".join(entity_ids[:50]),
-            "props": "labels",
-            "languages": "en",
-            "format": "json",
-        },
-        headers={"User-Agent": USER_AGENT},
-        timeout=timeout,
-    )
-    response.raise_for_status()
-    entities = response.json().get("entities", {})
-    return [
-        entities[item]["labels"]["en"]["value"]
-        for item in entity_ids
-        if item in entities and "en" in entities[item].get("labels", {})
-    ]
 
 
 def empty_metadata(display_name: str, status: str = "not_found") -> dict[str, Any]:
@@ -147,14 +125,21 @@ def enrich_classes(
     class_names: list[str], cache_path: Path, offline: bool
 ) -> dict[str, dict[str, Any]]:
     cache = load_metadata_cache(cache_path)
+    session = metadata_session()
     for index, class_name in enumerate(class_names, start=1):
-        if class_name in cache:
+        cached = cache.get(class_name, {})
+        if (
+            cached.get("metadata_status") == "resolved"
+            and cached.get("wikipedia_url")
+            and cached.get("why_famous")
+            and cached.get("profession")
+        ):
             continue
         if offline:
             cache[class_name] = empty_metadata(fallback_display_name(class_name), "offline")
         else:
             try:
-                cache[class_name] = fetch_person_metadata(class_name)
+                cache[class_name] = fetch_person_metadata(class_name, session=session)
             except (requests.RequestException, KeyError, TypeError, ValueError) as error:
                 cache[class_name] = empty_metadata(
                     fallback_display_name(class_name), f"error:{type(error).__name__}"

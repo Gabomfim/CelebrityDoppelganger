@@ -2,7 +2,7 @@ import pytest
 import torch
 from torch import nn
 
-from build_prototypes import fallback_display_name
+from build_prototypes import fallback_display_name, infer_profession
 from train import (
     BalancedBatchSampler,
     load_face_classifier_state,
@@ -37,6 +37,11 @@ def test_stratified_split_keeps_singletons_in_training():
 
 def test_fallback_display_name_removes_underscores():
     assert fallback_display_name("samuel_l_jackson") == "Samuel L Jackson"
+
+
+def test_infer_profession_uses_biographical_first_sentence():
+    description = "Example Person is an American actor and film producer."
+    assert infer_profession(description) == "American actor and film producer"
 
 
 def test_checkpoint_loader_ignores_only_unused_facenet_logits():
