@@ -20,6 +20,13 @@ let previewUrls = [];
 const analyticsStartedAt = Date.now();
 let analyticsEngaged = false;
 let analyticsEnded = false;
+const analyticsPreference = new URLSearchParams(window.location.search).get("analytics");
+if (analyticsPreference === "off") {
+  localStorage.setItem("celebrity-twin-analytics", "off");
+} else if (analyticsPreference === "on") {
+  localStorage.removeItem("celebrity-twin-analytics");
+}
+const analyticsEnabled = localStorage.getItem("celebrity-twin-analytics") !== "off";
 
 function analyticsSessionId() {
   let value = sessionStorage.getItem("celebrity-twin-session");
@@ -57,6 +64,7 @@ function clientContext() {
 }
 
 function sendAnalytics(event, details = {}, beacon = false) {
+  if (!analyticsEnabled) return;
   const payload = JSON.stringify({
     event,
     session_id: analyticsSessionId(),
@@ -119,12 +127,12 @@ function stopCamera() {
   camera.srcObject = null;
 }
 
-function waitForVideo() {
-  if (camera.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && camera.videoWidth > 0) {
+function waitForVideoMetadata() {
+  if (camera.readyState >= HTMLMediaElement.HAVE_METADATA && camera.videoWidth > 0) {
     return Promise.resolve();
   }
   return new Promise((resolve, reject) => {
-    const events = ["loadedmetadata", "loadeddata", "canplay", "playing"];
+    const events = ["loadedmetadata", "resize"];
     const cleanup = () => events.forEach((event) => camera.removeEventListener(event, finish));
     const finish = () => {
       if (camera.videoWidth <= 0) return;
@@ -140,14 +148,54 @@ function waitForVideo() {
   });
 }
 
+function waitForDecodedVideoFrame() {
+  return new Promise((resolve, reject) => {
+    let frameCallbackId;
+    const startedAt = performance.now();
+    const cleanup = () => {
+      window.clearInterval(poll);
+      window.clearTimeout(timer);
+      if (frameCallbackId && camera.cancelVideoFrameCallback) {
+        camera.cancelVideoFrameCallback(frameCallbackId);
+      }
+    };
+    const finish = () => {
+      cleanup();
+      resolve();
+    };
+    const hasFrame = () =>
+      camera.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
+      camera.videoWidth > 0 &&
+      camera.currentTime > 0;
+    const poll = window.setInterval(() => {
+      if (hasFrame()) finish();
+    }, 100);
+    const timer = window.setTimeout(() => {
+      cleanup();
+      reject(new DOMException("No video frame was received", "VideoFrameError"));
+    }, 10000);
+    if (camera.requestVideoFrameCallback) {
+      frameCallbackId = camera.requestVideoFrameCallback(() => finish());
+    }
+    // Some Safari versions do not advance currentTime immediately after the first frame.
+    camera.addEventListener("playing", () => {
+      if (performance.now() - startedAt > 250 && hasFrame()) finish();
+    }, { once: true });
+  });
+}
+
 async function requestCameraStream() {
   let timer;
+  const desktopSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent) &&
+    !/iPhone|iPad|iPod/i.test(navigator.userAgent);
   let request = navigator.mediaDevices.getUserMedia({
-    video: {
-      facingMode: { ideal: "user" },
-      width: { ideal: 1280 },
-      height: { ideal: 960 },
-    },
+    video: desktopSafari
+      ? { facingMode: "user" }
+      : {
+          facingMode: { ideal: "user" },
+          width: { ideal: 1280 },
+          height: { ideal: 960 },
+        },
     audio: false,
   });
   const timeout = new Promise((_, reject) => {
@@ -222,9 +270,10 @@ cameraButton.addEventListener("click", async () => {
     preview.hidden = true;
     placeholder.hidden = true;
     camera.srcObject = stream;
+    await waitForVideoMetadata();
     const playback = camera.play();
     if (playback) await playback;
-    await waitForVideo();
+    await waitForDecodedVideoFrame();
     cameraButton.hidden = true;
     snapButton.hidden = false;
     snapButton.disabled = false;
@@ -239,8 +288,9 @@ cameraButton.addEventListener("click", async () => {
     const denied = error?.name === "NotAllowedError" || error?.name === "SecurityError";
     const timedOut = error?.name === "TimeoutError";
     const unavailable = error?.name === "NotReadableError" || error?.name === "AbortError";
+    const blackPreview = error?.name === "VideoFrameError";
     sendAnalytics("camera_failed", {
-      error_code: denied ? "permission_denied" : timedOut ? "timeout" : unavailable ? "unavailable" : "other",
+      error_code: denied ? "permission_denied" : timedOut ? "timeout" : unavailable ? "unavailable" : blackPreview ? "black_preview" : "other",
     });
     showStatus(
       denied
@@ -249,6 +299,8 @@ cameraButton.addEventListener("click", async () => {
           ? "Camera permission timed out. Allow access when your browser asks, then try again."
           : unavailable
             ? "The camera is busy or unavailable. Close other camera apps and tabs, then try again."
+            : blackPreview
+              ? "Safari opened the camera but did not deliver a video frame. Reload the page, close other camera tabs, or upload three photos instead."
             : "We couldn't start your camera. Reload the page or upload three photos instead.",
     );
   } finally {
