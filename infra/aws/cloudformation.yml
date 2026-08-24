@@ -112,6 +112,23 @@ Resources:
       LogGroupName: /ecs/celebrity-twin
       RetentionInDays: 30
 
+  AnalyticsDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: celebrity-twin-product-analytics
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {"type":"text","x":0,"y":0,"width":24,"height":3,"properties":{"markdown":"# Celebrity Twin product analytics\nAnonymous first-party events only. No selfies, embeddings, matches, IP addresses, raw user agents, or persistent user IDs. Test sessions are excluded."}},
+            {"type":"log","x":0,"y":3,"width":12,"height":6,"properties":{"region":"${AWS::Region}","title":"Daily anonymous sessions","view":"timeSeries","query":"SOURCE '${LogGroup}' | filter record_type = 'celebrity_twin_analytics' and test_event = 0 and event = 'page_view' | stats count_distinct(session_id) as Sessions by bin(1d)"}},
+            {"type":"log","x":12,"y":3,"width":12,"height":6,"properties":{"region":"${AWS::Region}","title":"Engagement and bounce","view":"table","query":"SOURCE '${LogGroup}' | filter record_type = 'celebrity_twin_analytics' and test_event = 0 and event = 'session_end' | stats count(*) as EndedSessions, round(100 * avg(engaged), 1) as EngagementPercent, round(100 * (1 - avg(engaged)), 1) as BouncePercent, round(avg(duration_ms) / 1000, 1) as AvgSeconds"}},
+            {"type":"log","x":0,"y":9,"width":12,"height":7,"properties":{"region":"${AWS::Region}","title":"Selfie-to-match funnel","view":"bar","query":"SOURCE '${LogGroup}' | filter record_type = 'celebrity_twin_analytics' and test_event = 0 and event in ['page_view','camera_started','photobooth_completed','upload_selected','match_submitted','match_succeeded'] | stats count_distinct(session_id) as Sessions by event | sort Sessions desc"}},
+            {"type":"log","x":12,"y":9,"width":12,"height":7,"properties":{"region":"${AWS::Region}","title":"Usage by browser and device","view":"table","query":"SOURCE '${LogGroup}' | filter record_type = 'celebrity_twin_analytics' and test_event = 0 and event = 'page_view' | stats count_distinct(session_id) as Sessions by browser, device, os | sort Sessions desc"}},
+            {"type":"log","x":0,"y":16,"width":12,"height":7,"properties":{"region":"${AWS::Region}","title":"Camera failures by browser/device","view":"table","query":"SOURCE '${LogGroup}' | filter record_type = 'celebrity_twin_analytics' and test_event = 0 and event = 'camera_failed' | stats count(*) as Failures by error_code, browser, device, os | sort Failures desc"}},
+            {"type":"log","x":12,"y":16,"width":12,"height":7,"properties":{"region":"${AWS::Region}","title":"Match reliability and latency","view":"table","query":"SOURCE '${LogGroup}' | filter record_type = 'celebrity_twin_analytics' and test_event = 0 and event in ['match_succeeded','match_failed'] | stats count(*) as Attempts, round(pct(duration_ms, 50)) as P50Milliseconds, round(pct(duration_ms, 95)) as P95Milliseconds by event, browser, device | sort Attempts desc"}}
+          ]
+        }
+
   TaskExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -336,3 +353,5 @@ Outputs:
     Value: celebrity-twin-web
   GitHubDeployRoleArn:
     Value: !GetAtt GitHubDeployRole.Arn
+  AnalyticsDashboardUrl:
+    Value: !Sub https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=celebrity-twin-product-analytics

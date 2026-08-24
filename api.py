@@ -5,9 +5,11 @@ from __future__ import annotations
 import io
 import json
 import os
+import re
 from base64 import b64decode
 from binascii import Error as Base64Error
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -27,8 +29,38 @@ STATIC_DIR = PROJECT_ROOT / "web" / "static"
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
 PROTOTYPE_IMAGE_COUNT = 3
 MAX_PROTOTYPE_REQUEST_BYTES = 42 * 1024 * 1024
+MAX_ANALYTICS_REQUEST_BYTES = 4096
 GITHUB_URL = "https://github.com/Gabomfim/CelebrityDoppelganger"
 LINKEDIN_URL = "https://www.linkedin.com/in/gabrielabsilveira/"
+ANALYTICS_EVENTS = {
+    "page_view",
+    "engaged",
+    "camera_started",
+    "camera_ready",
+    "camera_failed",
+    "photobooth_completed",
+    "upload_selected",
+    "match_submitted",
+    "match_succeeded",
+    "match_failed",
+    "session_end",
+}
+ANALYTICS_CATEGORIES = {
+    "browser": {
+        "Chrome",
+        "Edge",
+        "Firefox",
+        "Safari",
+        "LinkedIn",
+        "Instagram",
+        "Facebook",
+        "Other WebView",
+        "Other",
+    },
+    "device": {"mobile", "tablet", "desktop"},
+    "os": {"Android", "iOS", "Linux", "macOS", "Windows", "Other"},
+}
+SESSION_ID_PATTERN = re.compile(r"^[A-Za-z0-9-]{16,64}$")
 
 
 class FaceNotDetectedError(ValueError):
@@ -206,6 +238,50 @@ def health(request: Request) -> JSONResponse:
     return JSONResponse(
         {"status": "ready" if ready else "model_unavailable"}, status_code=200 if ready else 503
     )
+
+
+@app.post("/api/analytics", status_code=204)
+async def analytics(request: Request) -> Response:
+    """Record allowlisted, anonymous product events without request identifiers."""
+    if request.headers.get("content-type", "").split(";", 1)[0] != "application/json":
+        raise HTTPException(status_code=415, detail="Analytics events must be JSON")
+    body = await request.body()
+    if not body or len(body) > MAX_ANALYTICS_REQUEST_BYTES:
+        raise HTTPException(status_code=400, detail="Invalid analytics event")
+    try:
+        payload = json.loads(body)
+    except (UnicodeDecodeError, ValueError) as error:
+        raise HTTPException(status_code=400, detail="Invalid analytics event") from error
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Invalid analytics event")
+    event = payload.get("event")
+    session_id = payload.get("session_id")
+    if (
+        event not in ANALYTICS_EVENTS
+        or not isinstance(session_id, str)
+        or not SESSION_ID_PATTERN.fullmatch(session_id)
+    ):
+        raise HTTPException(status_code=400, detail="Invalid analytics event")
+    record: dict[str, Any] = {
+        "record_type": "celebrity_twin_analytics",
+        "timestamp": datetime.now(UTC).isoformat(),
+        "event": event,
+        "session_id": session_id,
+        "test_event": int(session_id.startswith("test-")),
+    }
+    for field, allowed in ANALYTICS_CATEGORIES.items():
+        value = payload.get(field)
+        if value in allowed:
+            record[field] = value
+    for field in ("duration_ms", "engaged"):
+        value = payload.get(field)
+        if isinstance(value, int) and 0 <= value <= 3_600_000:
+            record[field] = value
+    error_code = payload.get("error_code")
+    if isinstance(error_code, str) and re.fullmatch(r"[a-z0-9_]{1,40}", error_code):
+        record["error_code"] = error_code
+    print(json.dumps(record, separators=(",", ":")), flush=True)
+    return Response(status_code=204)
 
 
 @app.post("/api/match")

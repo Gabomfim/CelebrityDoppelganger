@@ -64,6 +64,37 @@ def test_social_links_are_configured(monkeypatch):
     assert "github.com/Gabomfim/CelebrityDoppelganger" in response.json()["github_url"]
 
 
+def test_analytics_accepts_only_anonymous_allowlisted_data(capsys):
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/analytics",
+            json={
+                "event": "camera_failed",
+                "session_id": "12345678-1234-1234-1234-123456789abc",
+                "browser": "LinkedIn",
+                "device": "mobile",
+                "os": "iOS",
+                "error_code": "permission_denied",
+                "selfie": "must-not-be-logged",
+                "user_agent": "must-not-be-logged",
+            },
+        )
+    assert response.status_code == 204
+    output = capsys.readouterr().out
+    assert '"browser":"LinkedIn"' in output
+    assert "permission_denied" in output
+    assert "must-not-be-logged" not in output
+
+
+def test_analytics_rejects_unknown_events():
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/analytics",
+            json={"event": "store_selfie", "session_id": "12345678-1234-1234-1234-123456789abc"},
+        )
+    assert response.status_code == 400
+
+
 def test_camera_controls_have_safe_initial_state():
     with TestClient(app) as client:
         html = client.get("/").text

@@ -17,6 +17,74 @@ const shotStrip = document.querySelector("#shot-strip");
 let stream = null;
 let selectedBlobs = [];
 let previewUrls = [];
+const analyticsStartedAt = Date.now();
+let analyticsEngaged = false;
+let analyticsEnded = false;
+
+function analyticsSessionId() {
+  let value = sessionStorage.getItem("celebrity-twin-session");
+  if (!value) {
+    value = window.crypto?.randomUUID?.() || `anon-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    sessionStorage.setItem("celebrity-twin-session", value);
+  }
+  return value;
+}
+
+function clientContext() {
+  const agent = navigator.userAgent;
+  let browser = "Other";
+  if (/LinkedInApp|LIApp/i.test(agent)) browser = "LinkedIn";
+  else if (/Instagram/i.test(agent)) browser = "Instagram";
+  else if (/FBAN|FBAV/i.test(agent)) browser = "Facebook";
+  else if (/Edg/i.test(agent)) browser = "Edge";
+  else if (/Firefox|FxiOS/i.test(agent)) browser = "Firefox";
+  else if (/Chrome|CriOS/i.test(agent)) browser = "Chrome";
+  else if (/Safari/i.test(agent)) browser = "Safari";
+  else if (/; wv\)|WebView/i.test(agent)) browser = "Other WebView";
+  let os = "Other";
+  if (/Android/i.test(agent)) os = "Android";
+  else if (/iPhone|iPad|iPod/i.test(agent)) os = "iOS";
+  else if (/Windows/i.test(agent)) os = "Windows";
+  else if (/Macintosh/i.test(agent)) os = "macOS";
+  else if (/Linux/i.test(agent)) os = "Linux";
+  const shortestSide = Math.min(screen.width, screen.height);
+  const device = /iPad|Tablet/i.test(agent) || (navigator.maxTouchPoints > 1 && shortestSide >= 600)
+    ? "tablet"
+    : /Mobile|iPhone|Android/i.test(agent) || shortestSide < 600
+      ? "mobile"
+      : "desktop";
+  return { browser, device, os };
+}
+
+function sendAnalytics(event, details = {}, beacon = false) {
+  const payload = JSON.stringify({
+    event,
+    session_id: analyticsSessionId(),
+    ...clientContext(),
+    ...details,
+  });
+  if (beacon && navigator.sendBeacon) {
+    navigator.sendBeacon("/api/analytics", new Blob([payload], { type: "application/json" }));
+    return;
+  }
+  fetch("/api/analytics", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: payload,
+    keepalive: true,
+    cache: "no-store",
+  }).catch(() => {});
+}
+
+function markEngaged() {
+  if (analyticsEngaged) return;
+  analyticsEngaged = true;
+  sendAnalytics("engaged");
+}
+
+document.addEventListener("pointerdown", markEngaged, { once: true, passive: true });
+document.addEventListener("keydown", markEngaged, { once: true });
+sendAnalytics("page_view");
 
 async function loadConfig() {
   try {
@@ -122,6 +190,7 @@ function showSelectedImages(blobs) {
 }
 
 cameraButton.addEventListener("click", async () => {
+  sendAnalytics("camera_started");
   showStatus("Requesting camera access…");
   selectedBlobs = [];
   matchButton.hidden = true;
@@ -129,10 +198,12 @@ cameraButton.addEventListener("click", async () => {
   revokePreviews();
 
   if (!window.isSecureContext) {
+    sendAnalytics("camera_failed", { error_code: "insecure_context" });
     showStatus("Camera access requires HTTPS. Open the secure site or upload a photo instead.");
     return;
   }
   if (!navigator.mediaDevices?.getUserMedia) {
+    sendAnalytics("camera_failed", { error_code: "unsupported" });
     showStatus("This browser doesn't support camera capture here. Upload a photo instead.");
     return;
   }
@@ -160,6 +231,7 @@ cameraButton.addEventListener("click", async () => {
     showStatus(
       "Camera ready — remove sunglasses, keep only one face in frame, then start the photobooth.",
     );
+    sendAnalytics("camera_ready");
   } catch (error) {
     stopCamera();
     camera.hidden = true;
@@ -167,6 +239,9 @@ cameraButton.addEventListener("click", async () => {
     const denied = error?.name === "NotAllowedError" || error?.name === "SecurityError";
     const timedOut = error?.name === "TimeoutError";
     const unavailable = error?.name === "NotReadableError" || error?.name === "AbortError";
+    sendAnalytics("camera_failed", {
+      error_code: denied ? "permission_denied" : timedOut ? "timeout" : unavailable ? "unavailable" : "other",
+    });
     showStatus(
       denied
         ? "Camera permission was blocked. In Safari, open Settings → Websites → Camera, choose Allow for this site, then reload."
@@ -231,6 +306,7 @@ snapButton.addEventListener("click", async () => {
     stopCamera();
     showSelectedImages(blobs);
     showStatus("Three great shots! We'll combine them into your private face prototype.");
+    sendAnalytics("photobooth_completed");
   } catch (error) {
     showStatus(error.message || "We couldn't finish the photobooth. Please try again.");
   } finally {
@@ -258,6 +334,7 @@ upload.addEventListener("change", () => {
   showSelectedImages(files);
   cameraButton.innerHTML = "<span>◉</span> Use camera";
   showStatus("Three photos ready. They will be processed in memory and never stored.");
+  sendAnalytics("upload_selected");
 });
 
 function blobToDataUrl(blob) {
@@ -274,6 +351,8 @@ matchButton.addEventListener("click", async () => {
   matchButton.disabled = true;
   matchButton.innerHTML = "Reading the stars… <span>✦</span>";
   showStatus();
+  const matchStartedAt = performance.now();
+  sendAnalytics("match_submitted");
   try {
     const images = await Promise.all(selectedBlobs.map(blobToDataUrl));
     const response = await fetch("/api/match-prototype", {
@@ -292,8 +371,13 @@ matchButton.addEventListener("click", async () => {
     preview.hidden = true;
     placeholder.hidden = false;
     matchButton.hidden = true;
+    sendAnalytics("match_succeeded", { duration_ms: Math.round(performance.now() - matchStartedAt) });
   } catch (error) {
     showStatus(error.message);
+    sendAnalytics("match_failed", {
+      duration_ms: Math.round(performance.now() - matchStartedAt),
+      error_code: "match_error",
+    });
   } finally {
     matchButton.disabled = false;
     matchButton.innerHTML = "Find my celebrity twins <span>→</span>";
@@ -333,6 +417,14 @@ againButton.addEventListener("click", () => {
 });
 
 window.addEventListener("pagehide", () => {
+  if (!analyticsEnded) {
+    analyticsEnded = true;
+    sendAnalytics(
+      "session_end",
+      { duration_ms: Date.now() - analyticsStartedAt, engaged: analyticsEngaged ? 1 : 0 },
+      true,
+    );
+  }
   stopCamera();
   revokePreviews();
 });
