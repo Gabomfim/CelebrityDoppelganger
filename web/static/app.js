@@ -142,7 +142,9 @@ cameraButton.addEventListener("click", async () => {
     cameraButton.hidden = true;
     snapButton.hidden = false;
     snapButton.disabled = false;
-    showStatus("Camera ready — center your face, then start the three-shot photobooth.");
+    showStatus(
+      "Camera ready — remove sunglasses, keep only one face in frame, then start the photobooth.",
+    );
   } catch (error) {
     stopCamera();
     camera.hidden = true;
