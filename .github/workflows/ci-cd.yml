@@ -30,10 +30,10 @@ jobs:
         run: uv sync --locked
 
       - name: Check formatting
-        run: uv run ruff format --check train.py build_prototypes.py modal_train.py api.py tests
+        run: uv run ruff format --check train.py build_prototypes.py refresh_metadata.py modal_train.py api.py tests
 
       - name: Lint
-        run: uv run ruff check train.py build_prototypes.py modal_train.py api.py tests
+        run: uv run ruff check train.py build_prototypes.py refresh_metadata.py modal_train.py api.py tests
 
       - name: Run tests
         run: uv run pytest -q

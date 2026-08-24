@@ -69,7 +69,7 @@ def configure_aws_identity() -> None:
     },
 )
 def train_remote(
-    epochs: int = 30,
+    epochs: int = 60,
     run_name: str | None = None,
     prototypes_only: bool = False,
     full_data: bool = False,
@@ -118,7 +118,7 @@ def train_remote(
 
 @app.local_entrypoint()
 def main(
-    epochs: int = 30,
+    epochs: int = 60,
     run_name: str | None = None,
     prototypes_only: bool = False,
     full_data: bool = False,
