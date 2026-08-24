@@ -121,4 +121,6 @@ def test_camera_controls_have_safe_initial_state():
     assert "Settings → Websites → Camera" in client.get("/app.js").text
     assert "waitForDecodedVideoFrame" in client.get("/app.js").text
     assert '"black_preview"' in client.get("/app.js").text
+    assert 'analyticsPreference === "off"' in client.get("/app.js").text
+    assert "if (!analyticsEnabled) return" in client.get("/app.js").text
     assert "[hidden] { display:none !important; }" in css

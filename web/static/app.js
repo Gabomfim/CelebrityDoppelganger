@@ -20,6 +20,13 @@ let previewUrls = [];
 const analyticsStartedAt = Date.now();
 let analyticsEngaged = false;
 let analyticsEnded = false;
+const analyticsPreference = new URLSearchParams(window.location.search).get("analytics");
+if (analyticsPreference === "off") {
+  localStorage.setItem("celebrity-twin-analytics", "off");
+} else if (analyticsPreference === "on") {
+  localStorage.removeItem("celebrity-twin-analytics");
+}
+const analyticsEnabled = localStorage.getItem("celebrity-twin-analytics") !== "off";
 
 function analyticsSessionId() {
   let value = sessionStorage.getItem("celebrity-twin-session");
@@ -57,6 +64,7 @@ function clientContext() {
 }
 
 function sendAnalytics(event, details = {}, beacon = false) {
+  if (!analyticsEnabled) return;
   const payload = JSON.stringify({
     event,
     session_id: analyticsSessionId(),
