@@ -10,10 +10,13 @@ const status = document.querySelector("#status");
 const results = document.querySelector("#results");
 const resultGrid = document.querySelector("#result-grid");
 const againButton = document.querySelector("#again-button");
+const countdown = document.querySelector("#countdown");
+const flash = document.querySelector("#flash");
+const shotStrip = document.querySelector("#shot-strip");
 
 let stream = null;
-let selectedBlob = null;
-let previewUrl = null;
+let selectedBlobs = [];
+let previewUrls = [];
 
 async function loadConfig() {
   try {
@@ -36,9 +39,10 @@ function showStatus(message = "") {
   status.textContent = message;
 }
 
-function revokePreview() {
-  if (previewUrl) URL.revokeObjectURL(previewUrl);
-  previewUrl = null;
+function revokePreviews() {
+  previewUrls.forEach((url) => URL.revokeObjectURL(url));
+  previewUrls = [];
+  shotStrip.innerHTML = "";
 }
 
 function stopCamera() {
@@ -91,27 +95,30 @@ async function requestCameraStream() {
   }
 }
 
-function showSelectedImage(blob) {
-  selectedBlob = blob;
-  revokePreview();
-  previewUrl = URL.createObjectURL(blob);
-  preview.src = previewUrl;
+function showSelectedImages(blobs) {
+  selectedBlobs = blobs;
+  revokePreviews();
+  previewUrls = blobs.map((blob) => URL.createObjectURL(blob));
+  preview.src = previewUrls.at(-1);
   preview.hidden = false;
   camera.hidden = true;
   placeholder.hidden = true;
   snapButton.hidden = true;
   snapButton.disabled = true;
   cameraButton.hidden = false;
-  cameraButton.innerHTML = "<span>↻</span> Retake selfie";
+  cameraButton.innerHTML = "<span>↻</span> Retake 3 selfies";
   matchButton.hidden = false;
+  shotStrip.innerHTML = previewUrls
+    .map((url, index) => `<img src="${url}" alt="Selfie ${index + 1} of 3">`)
+    .join("");
 }
 
 cameraButton.addEventListener("click", async () => {
   showStatus("Requesting camera access…");
-  selectedBlob = null;
+  selectedBlobs = [];
   matchButton.hidden = true;
   results.hidden = true;
-  revokePreview();
+  revokePreviews();
 
   if (!window.isSecureContext) {
     showStatus("Camera access requires HTTPS. Open the secure site or upload a photo instead.");
@@ -135,7 +142,7 @@ cameraButton.addEventListener("click", async () => {
     cameraButton.hidden = true;
     snapButton.hidden = false;
     snapButton.disabled = false;
-    showStatus("Camera ready — center your face and take the selfie.");
+    showStatus("Camera ready — center your face, then start the three-shot photobooth.");
   } catch (error) {
     stopCamera();
     camera.hidden = true;
@@ -154,56 +161,105 @@ cameraButton.addEventListener("click", async () => {
   }
 });
 
-snapButton.addEventListener("click", () => {
-  if (!stream || !camera.videoWidth || !camera.videoHeight) {
-    showStatus("The camera is still getting ready. Wait a moment and try again.");
-    return;
-  }
+function delay(milliseconds) {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+}
+
+function captureFrame() {
   canvas.width = camera.videoWidth;
   canvas.height = camera.videoHeight;
   const context = canvas.getContext("2d");
   context.translate(canvas.width, 0);
   context.scale(-1, 1);
   context.drawImage(camera, 0, 0);
-  canvas.toBlob(
-    (blob) => {
-      if (!blob) {
-        showStatus("We couldn't capture that frame. Please try again.");
-        return;
-      }
-      stopCamera();
-      showSelectedImage(blob);
-      showStatus("Looking good! Submit this selfie or take another one.");
-    },
-    "image/jpeg",
-    0.92,
-  );
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error("We couldn't capture that frame."))),
+      "image/jpeg",
+      0.92,
+    );
+  });
+}
+
+async function runCountdown(shotNumber) {
+  countdown.hidden = false;
+  for (const value of [3, 2, 1]) {
+    countdown.textContent = value;
+    showStatus(`Photo ${shotNumber} of 3 — hold that pose…`);
+    await delay(650);
+  }
+  countdown.textContent = "★";
+}
+
+snapButton.addEventListener("click", async () => {
+  if (!stream || !camera.videoWidth || !camera.videoHeight) {
+    showStatus("The camera is still getting ready. Wait a moment and try again.");
+    return;
+  }
+  snapButton.disabled = true;
+  cameraButton.disabled = true;
+  const blobs = [];
+  try {
+    for (let shot = 1; shot <= 3; shot += 1) {
+      await runCountdown(shot);
+      blobs.push(await captureFrame());
+      flash.hidden = false;
+      await delay(120);
+      flash.hidden = true;
+      await delay(350);
+    }
+    stopCamera();
+    showSelectedImages(blobs);
+    showStatus("Three great shots! We'll combine them into your private face prototype.");
+  } catch (error) {
+    showStatus(error.message || "We couldn't finish the photobooth. Please try again.");
+  } finally {
+    countdown.hidden = true;
+    flash.hidden = true;
+    snapButton.disabled = false;
+    cameraButton.disabled = false;
+  }
 });
 
 upload.addEventListener("change", () => {
-  const file = upload.files?.[0];
-  if (!file) return;
-  if (file.size > 10 * 1024 * 1024) {
+  const files = Array.from(upload.files || []);
+  if (!files.length) return;
+  if (files.length !== 3) {
     upload.value = "";
-    showStatus("Choose an image smaller than 10 MB.");
+    showStatus("Choose exactly three photos to create your prototype.");
+    return;
+  }
+  if (files.some((file) => file.size > 10 * 1024 * 1024)) {
+    upload.value = "";
+    showStatus("Each photo must be smaller than 10 MB.");
     return;
   }
   stopCamera();
-  showSelectedImage(file);
+  showSelectedImages(files);
   cameraButton.innerHTML = "<span>◉</span> Use camera";
-  showStatus("Photo ready. It will be processed in memory and never stored.");
+  showStatus("Three photos ready. They will be processed in memory and never stored.");
 });
 
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error("One of the photos could not be read."));
+    reader.readAsDataURL(blob);
+  });
+}
+
 matchButton.addEventListener("click", async () => {
-  if (!selectedBlob) return;
+  if (selectedBlobs.length !== 3) return;
   matchButton.disabled = true;
   matchButton.innerHTML = "Reading the stars… <span>✦</span>";
   showStatus();
   try {
-    const response = await fetch("/api/match", {
+    const images = await Promise.all(selectedBlobs.map(blobToDataUrl));
+    const response = await fetch("/api/match-prototype", {
       method: "POST",
-      headers: { "Content-Type": selectedBlob.type || "image/jpeg" },
-      body: selectedBlob,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ images }),
       cache: "no-store",
     });
     const payload = await response.json();
@@ -211,10 +267,14 @@ matchButton.addEventListener("click", async () => {
     renderResults(payload.matches);
     results.hidden = false;
     results.scrollIntoView({ behavior: "smooth" });
+    selectedBlobs = [];
+    revokePreviews();
+    preview.hidden = true;
+    placeholder.hidden = false;
+    matchButton.hidden = true;
   } catch (error) {
     showStatus(error.message);
   } finally {
-    selectedBlob = null;
     matchButton.disabled = false;
     matchButton.innerHTML = "Find my celebrity twins <span>→</span>";
   }
@@ -240,8 +300,8 @@ againButton.addEventListener("click", () => {
   placeholder.hidden = false;
   matchButton.hidden = true;
   upload.value = "";
-  selectedBlob = null;
-  revokePreview();
+  selectedBlobs = [];
+  revokePreviews();
   showStatus();
   window.scrollTo({
     top: document.querySelector(".studio").offsetTop - 20,
@@ -251,6 +311,6 @@ againButton.addEventListener("click", () => {
 
 window.addEventListener("pagehide", () => {
   stopCamera();
-  revokePreview();
+  revokePreviews();
 });
 loadConfig();

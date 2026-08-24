@@ -81,10 +81,11 @@ Run quality checks with `uv run ruff format --check .`, `uv run ruff check .`, a
 
 ## Private selfie web service
 
-The FastAPI service accepts JPEG, PNG, or WebP bytes directly into memory, rejects requests over
-10 MB, detects and crops a face, applies the training evaluation transform, generates an embedding,
-and queries the three nearest class prototypes. User images are never
-written to disk or retained.
+The photobooth captures or accepts exactly three JPEG, PNG, or WebP images. FastAPI processes each
+image directly in memory, detects and crops its face, applies the training evaluation transform,
+and averages the three normalized embeddings into a temporary user prototype. That prototype is
+queried against the three nearest class prototypes. Images and the user prototype are never written
+to disk or retained.
 
 ```bash
 MODEL_CHECKPOINT=models/celebrity_face_classifier.pt \

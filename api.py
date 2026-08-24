@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import io
+import json
 import os
+from base64 import b64decode
+from binascii import Error as Base64Error
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -22,6 +25,8 @@ from train import FaceClassifier, build_eval_transform, load_face_classifier_sta
 PROJECT_ROOT = Path(__file__).parent
 STATIC_DIR = PROJECT_ROOT / "web" / "static"
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
+PROTOTYPE_IMAGE_COUNT = 3
+MAX_PROTOTYPE_REQUEST_BYTES = 42 * 1024 * 1024
 GITHUB_URL = "https://github.com/Gabomfim/CelebrityDoppelganger"
 LINKEDIN_URL = "https://www.linkedin.com/in/gabrielabsilveira/"
 
@@ -121,8 +126,7 @@ class CelebrityMatcher:
             embedding, _ = self.model(face)
         return embedding[0].cpu().tolist()
 
-    def match(self, image_bytes: bytes) -> list[dict[str, Any]]:
-        vector = self.embed(image_bytes)
+    def _match_vector(self, vector: list[float]) -> list[dict[str, Any]]:
         neighbors = self.table.search(vector).metric("cosine").limit(3).to_list()
         matches = []
         for neighbor in neighbors[:3]:
@@ -141,6 +145,16 @@ class CelebrityMatcher:
                 }
             )
         return matches
+
+    def match(self, image_bytes: bytes) -> list[dict[str, Any]]:
+        return self._match_vector(self.embed(image_bytes))
+
+    def match_prototype(self, images: list[bytes]) -> list[dict[str, Any]]:
+        if len(images) != PROTOTYPE_IMAGE_COUNT:
+            raise ValueError(f"Exactly {PROTOTYPE_IMAGE_COUNT} images are required")
+        embeddings = torch.tensor([self.embed(image) for image in images])
+        prototype = torch.nn.functional.normalize(embeddings.mean(dim=0), dim=0)
+        return self._match_vector(prototype.tolist())
 
 
 def create_matcher() -> CelebrityMatcher:
@@ -218,6 +232,62 @@ async def match(request: Request) -> dict[str, Any]:
     finally:
         body.clear()
     return {"matches": results, "neighbor_count": 3, "image_stored": False}
+
+
+@app.post("/api/match-prototype")
+async def match_prototype(request: Request) -> dict[str, Any]:
+    matcher: CelebrityMatcher | None = request.app.state.matcher
+    if matcher is None:
+        raise HTTPException(status_code=503, detail="The matching model is not available yet")
+    if request.headers.get("content-type", "").split(";", 1)[0] != "application/json":
+        raise HTTPException(status_code=415, detail="Send the three images as JSON")
+    body = bytearray()
+    images: list[bytes] = []
+    try:
+        async for chunk in request.stream():
+            body.extend(chunk)
+            if len(body) > MAX_PROTOTYPE_REQUEST_BYTES:
+                raise HTTPException(status_code=413, detail="The selfie set is too large")
+        try:
+            payload = json.loads(body)
+        except (UnicodeDecodeError, ValueError) as error:
+            raise HTTPException(status_code=400, detail="The selfie set is invalid") from error
+        encoded_images = payload.get("images") if isinstance(payload, dict) else None
+        if not isinstance(encoded_images, list) or len(encoded_images) != PROTOTYPE_IMAGE_COUNT:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Exactly {PROTOTYPE_IMAGE_COUNT} selfies are required",
+            )
+        for encoded in encoded_images:
+            if not isinstance(encoded, str):
+                raise HTTPException(status_code=400, detail="The selfie set is invalid")
+            value = encoded.split(",", 1)[-1]
+            try:
+                image = b64decode(value, validate=True)
+            except (Base64Error, ValueError) as error:
+                raise HTTPException(status_code=400, detail="The selfie set is invalid") from error
+            if not image or len(image) > MAX_IMAGE_BYTES:
+                raise HTTPException(
+                    status_code=413, detail="Each selfie must be smaller than 10 MB"
+                )
+            images.append(image)
+        results = matcher.match_prototype(images)
+    except FaceNotDetectedError as error:
+        raise HTTPException(
+            status_code=422,
+            detail="A clear face was not detected in all three selfies. Please retake the set.",
+        ) from error
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    finally:
+        body.clear()
+        images.clear()
+    return {
+        "matches": results,
+        "neighbor_count": 3,
+        "prototype_image_count": PROTOTYPE_IMAGE_COUNT,
+        "image_stored": False,
+    }
 
 
 @app.get("/api/celebrity-photo/{class_name}")
