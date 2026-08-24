@@ -8,6 +8,7 @@ import math
 import os
 import random
 from collections import defaultdict
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -213,6 +214,17 @@ class FaceClassifier(nn.Module):
         return embeddings, self.classifier(embeddings)
 
 
+def load_face_classifier_state(model: nn.Module, state_dict: Mapping[str, Tensor]) -> None:
+    """Load a checkpoint while ignoring unused pretrained FaceNet logits."""
+    model_keys = set(model.state_dict())
+    unexpected = set(state_dict) - model_keys
+    allowed_unused = {"backbone.logits.weight", "backbone.logits.bias"}
+    if unexpected - allowed_unused:
+        names = ", ".join(sorted(unexpected - allowed_unused))
+        raise RuntimeError(f"Unexpected checkpoint keys: {names}")
+    model.load_state_dict({key: value for key, value in state_dict.items() if key in model_keys})
+
+
 def supervised_contrastive_loss(features: Tensor, labels: Tensor, temperature: float) -> Tensor:
     """Supervised contrastive loss from Khosla et al., excluding self-pairs."""
     features = F.normalize(features, dim=1)
@@ -355,7 +367,7 @@ def train(config: TrainConfig) -> Path:
     start_epoch, best_accuracy, stale_epochs = 0, -1.0, 0
     if config.resume:
         state = torch.load(config.resume, map_location=device, weights_only=False)
-        model.load_state_dict(state["model_state_dict"])
+        load_face_classifier_state(model, state["model_state_dict"])
         optimizer.load_state_dict(state["optimizer_state_dict"])
         scheduler.load_state_dict(state["scheduler_state_dict"])
         start_epoch = int(state["epoch"]) + 1

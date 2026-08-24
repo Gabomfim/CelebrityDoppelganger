@@ -12,12 +12,19 @@ from typing import Any
 
 import boto3
 import lancedb
+import pyarrow as pa
 import requests
 import torch
 from PIL import Image
 from torch.utils.data import DataLoader
 
-from train import FaceClassifier, FaceDataset, build_eval_transform, discover_images
+from train import (
+    FaceClassifier,
+    FaceDataset,
+    build_eval_transform,
+    discover_images,
+    load_face_classifier_state,
+)
 
 WIKIDATA_API = "https://www.wikidata.org/w/api.php"
 USER_AGENT = "CelebrityDoppelganger/1.0 (prototype metadata enrichment)"
@@ -183,7 +190,7 @@ def build_prototype_database(
     if discovered_names != class_names:
         raise ValueError("Checkpoint class order does not match the current dataset")
     model = FaceClassifier(len(class_names), int(state["config"]["embedding_dim"]), pretrained=None)
-    model.load_state_dict(state["model_state_dict"])
+    load_face_classifier_state(model, state["model_state_dict"])
     model.to(device).eval()
     loader = DataLoader(
         FaceDataset(paths, labels, build_eval_transform()),
@@ -220,7 +227,7 @@ def build_prototype_database(
     if not database_uri.startswith("s3://"):
         Path(database_uri).mkdir(parents=True, exist_ok=True)
     database = lancedb.connect(database_uri)
-    database.create_table("person_prototypes", data=records, mode="overwrite")
+    database.create_table("person_prototypes", data=pa.Table.from_pylist(records), mode="overwrite")
     manifest = {
         "format_version": 1,
         "table": "person_prototypes",

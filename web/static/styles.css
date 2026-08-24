@@ -24,6 +24,7 @@ h1 em { color:var(--pink);font-style:normal;white-space:nowrap; }
 .pulse { width:8px;height:8px;border-radius:50%;background:var(--gold);box-shadow:0 0 0 5px rgba(201,149,46,.13); }
 .studio { display:grid;grid-template-columns:.8fr 1.2fr;gap:80px;align-items:center;padding:56px;border:1px solid var(--line);border-radius:36px;background:rgba(255,253,248,.8);box-shadow:var(--shadow);backdrop-filter:blur(15px); }
 .step { display:grid;place-items:center;width:42px;height:42px;border-radius:14px;background:var(--ink);color:white;font-size:.8rem;font-weight:800;transform:rotate(-4deg); }
+.step-star { background:linear-gradient(145deg,#f6d477,#c9952e);color:#4a180c;font-size:1.15rem;box-shadow:0 8px 18px rgba(157,105,20,.22); }
 .studio-copy h2,.results h2 { margin:22px 0 20px;font-size:clamp(2.5rem,5vw,4.5rem); }
 .studio-copy p { color:var(--muted);font-size:1.05rem;line-height:1.65; }
 .studio-copy ul { list-style:none;padding:12px 0 0;margin:0; }
