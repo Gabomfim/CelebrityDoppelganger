@@ -56,21 +56,25 @@ function waitForVideo() {
     return Promise.resolve();
   }
   return new Promise((resolve, reject) => {
-    const timer = window.setTimeout(() => reject(new Error("Camera startup timed out.")), 10000);
-    camera.addEventListener(
-      "loadeddata",
-      () => {
-        window.clearTimeout(timer);
-        resolve();
-      },
-      { once: true },
-    );
+    const events = ["loadedmetadata", "loadeddata", "canplay", "playing"];
+    const cleanup = () => events.forEach((event) => camera.removeEventListener(event, finish));
+    const finish = () => {
+      if (camera.videoWidth <= 0) return;
+      window.clearTimeout(timer);
+      cleanup();
+      resolve();
+    };
+    const timer = window.setTimeout(() => {
+      cleanup();
+      reject(new Error("Camera startup timed out."));
+    }, 20000);
+    events.forEach((event) => camera.addEventListener(event, finish));
   });
 }
 
 async function requestCameraStream() {
   let timer;
-  const request = navigator.mediaDevices.getUserMedia({
+  let request = navigator.mediaDevices.getUserMedia({
     video: {
       facingMode: { ideal: "user" },
       width: { ideal: 1280 },
@@ -81,11 +85,15 @@ async function requestCameraStream() {
   const timeout = new Promise((_, reject) => {
     timer = window.setTimeout(() => {
       reject(new DOMException("Camera permission timed out", "TimeoutError"));
-    }, 15000);
+    }, 30000);
   });
   try {
     return await Promise.race([request, timeout]);
   } catch (error) {
+    if (error?.name === "OverconstrainedError") {
+      request = navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      return await request;
+    }
     if (error?.name === "TimeoutError") {
       request.then((lateStream) => lateStream.getTracks().forEach((track) => track.stop()));
     }
@@ -99,7 +107,7 @@ function showSelectedImages(blobs) {
   selectedBlobs = blobs;
   revokePreviews();
   previewUrls = blobs.map((blob) => URL.createObjectURL(blob));
-  preview.src = previewUrls.at(-1);
+  preview.src = previewUrls[previewUrls.length - 1];
   preview.hidden = false;
   camera.hidden = true;
   placeholder.hidden = true;
@@ -133,11 +141,18 @@ cameraButton.addEventListener("click", async () => {
   try {
     stopCamera();
     stream = await requestCameraStream();
-    camera.srcObject = stream;
+    camera.autoplay = true;
+    camera.muted = true;
+    camera.playsInline = true;
+    camera.setAttribute("autoplay", "");
+    camera.setAttribute("muted", "");
+    camera.setAttribute("playsinline", "");
     camera.hidden = false;
     preview.hidden = true;
     placeholder.hidden = true;
-    await camera.play();
+    camera.srcObject = stream;
+    const playback = camera.play();
+    if (playback) await playback;
     await waitForVideo();
     cameraButton.hidden = true;
     snapButton.hidden = false;
@@ -151,12 +166,15 @@ cameraButton.addEventListener("click", async () => {
     placeholder.hidden = false;
     const denied = error?.name === "NotAllowedError" || error?.name === "SecurityError";
     const timedOut = error?.name === "TimeoutError";
+    const unavailable = error?.name === "NotReadableError" || error?.name === "AbortError";
     showStatus(
       denied
-        ? "Camera permission was blocked. Allow camera access in your browser settings or upload a photo."
+        ? "Camera permission was blocked. In Safari, open Settings → Websites → Camera, choose Allow for this site, then reload."
         : timedOut
           ? "Camera permission timed out. Allow access when your browser asks, then try again."
-          : "We couldn't start your camera. Try another browser or upload a photo instead.",
+          : unavailable
+            ? "The camera is busy or unavailable. Close other camera apps and tabs, then try again."
+            : "We couldn't start your camera. Reload the page or upload three photos instead.",
     );
   } finally {
     cameraButton.disabled = false;
