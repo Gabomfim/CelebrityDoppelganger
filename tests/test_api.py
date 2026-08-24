@@ -69,6 +69,7 @@ def test_camera_controls_have_safe_initial_state():
         html = client.get("/").text
         css = client.get("/styles.css").text
     assert 'id="camera-button"' in html
+    assert '<video id="camera" playsinline autoplay muted>' in html
     assert 'id="snap-button"' in html and "hidden disabled" in html
     assert 'id="match-button"' in html and "hidden" in html
     assert 'id="countdown"' in html and 'id="shot-strip"' in html
@@ -78,4 +79,5 @@ def test_camera_controls_have_safe_initial_state():
     assert '<span class="step" aria-label="Step 1">01</span>' in html
     assert "Public figure" not in client.get("/app.js").text
     assert "A celebrated face with an uncanny resemblance" not in client.get("/app.js").text
+    assert "Settings → Websites → Camera" in client.get("/app.js").text
     assert "[hidden] { display:none !important; }" in css
