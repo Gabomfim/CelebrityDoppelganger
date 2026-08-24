@@ -24,16 +24,16 @@
       <section class="hero">
         <div class="eyebrow">AI-powered face matching</div>
         <h1>Meet your <em>celebrity twins.</em></h1>
-        <p>One selfie. Your three most convincing famous lookalikes.</p>
-        <div class="privacy-pill"><span class="pulse"></span><strong>Private by design</strong> — your photo is processed in memory and never stored on our server.</div>
+        <p>Three selfies. One personal prototype. Your three most convincing famous lookalikes.</p>
+        <div class="privacy-pill"><span class="pulse"></span><strong>Private by design</strong> — your selfies are processed in memory and never stored on our server.</div>
       </section>
 
       <section class="studio" aria-labelledby="studio-title">
         <div class="studio-copy">
           <span class="step step-star" aria-label="Start">★</span>
           <h2 id="studio-title">Put your best face forward</h2>
-          <p>Look straight ahead, remove sunglasses, and choose even lighting. Keep only one face in the frame.</p>
-          <ul><li>Center your face in the guide</li><li>Use natural, front-facing light</li><li>Smile—or serve your best red carpet look</li></ul>
+          <p>Our photobooth takes three quick selfies and combines them into one more reliable face prototype.</p>
+          <ul><li>Center your face in the guide</li><li>Make a small expression change each shot</li><li>Smile—or serve your best red carpet look</li></ul>
         </div>
 
         <div class="capture-card">
@@ -44,26 +44,29 @@
             </div>
             <video id="camera" playsinline autoplay muted></video>
             <img id="preview" alt="Selected selfie preview" hidden />
+            <div id="countdown" class="countdown" aria-live="assertive" hidden></div>
+            <div id="flash" class="camera-flash" hidden></div>
             <div class="face-guide" aria-hidden="true"><div class="guide-label">Place your face here</div></div>
             <div id="camera-placeholder" class="camera-placeholder"><span>✦</span><p>Ready for your close-up?</p><small>Tap “Start camera” and allow access when asked.</small></div>
           </div>
           <canvas id="canvas" hidden></canvas>
+          <div id="shot-strip" class="shot-strip" aria-label="Captured selfies"></div>
           <div id="status" class="status" role="status" aria-live="polite"></div>
           <div class="actions">
             <button id="camera-button" type="button" class="button button-primary"><span>◉</span> Start camera</button>
-            <button id="snap-button" type="button" class="button button-primary" hidden disabled><span>✦</span> Take selfie</button>
-            <label class="button button-secondary" for="upload"><span>↑</span> Upload photo</label>
-            <input id="upload" type="file" accept="image/jpeg,image/png,image/webp" hidden />
+            <button id="snap-button" type="button" class="button button-primary" hidden disabled><span>✦</span> Take 3 selfies</button>
+            <label class="button button-secondary" for="upload"><span>↑</span> Upload 3 photos</label>
+            <input id="upload" type="file" accept="image/jpeg,image/png,image/webp" multiple hidden />
           </div>
           <button id="match-button" type="button" class="button match-button" hidden>Find my celebrity twins <span>→</span></button>
-          <p class="micro-privacy">🔒 The image is discarded immediately after matching. We don't create accounts or retain biometric data.</p>
+          <p class="micro-privacy">🔒 All three images and the temporary user prototype are discarded immediately after matching. We don't create accounts or retain biometric data.</p>
         </div>
       </section>
 
       <section id="results" class="results" hidden>
         <div class="results-heading"><span class="step">02</span><div><p class="eyebrow">The verdict is in</p><h2>Your famous lookalikes</h2></div></div>
         <div id="result-grid" class="result-grid"></div>
-        <button id="again-button" type="button" class="button button-secondary again-button">Try another photo</button>
+        <button id="again-button" type="button" class="button button-secondary again-button">Try another photobooth</button>
       </section>
     </main>
 
