@@ -83,7 +83,7 @@ Run quality checks with `uv run ruff format --check .`, `uv run ruff check .`, a
 
 The FastAPI service accepts JPEG, PNG, or WebP bytes directly into memory, rejects requests over
 10 MB, detects and crops a face, applies the training evaluation transform, generates an embedding,
-and queries ten prototype neighbors. It returns only the best three results. User images are never
+and queries the three nearest class prototypes. User images are never
 written to disk or retained.
 
 ```bash

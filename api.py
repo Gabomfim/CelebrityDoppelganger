@@ -123,7 +123,7 @@ class CelebrityMatcher:
 
     def match(self, image_bytes: bytes) -> list[dict[str, Any]]:
         vector = self.embed(image_bytes)
-        neighbors = self.table.search(vector).metric("cosine").limit(10).to_list()
+        neighbors = self.table.search(vector).metric("cosine").limit(3).to_list()
         matches = []
         for neighbor in neighbors[:3]:
             class_name = neighbor["class_name"]
@@ -217,7 +217,7 @@ async def match(request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail=str(error)) from error
     finally:
         body.clear()
-    return {"matches": results, "neighbor_count": 10, "image_stored": False}
+    return {"matches": results, "neighbor_count": 3, "image_stored": False}
 
 
 @app.get("/api/celebrity-photo/{class_name}")

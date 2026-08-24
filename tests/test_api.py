@@ -17,7 +17,7 @@ def test_match_accepts_raw_image_and_declares_no_storage():
         )
     assert response.status_code == 200
     assert response.json()["image_stored"] is False
-    assert response.json()["neighbor_count"] == 10
+    assert response.json()["neighbor_count"] == 3
 
 
 def test_match_rejects_non_image_content():
