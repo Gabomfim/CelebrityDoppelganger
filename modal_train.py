@@ -19,6 +19,7 @@ image = (
         "facenet-pytorch>=2.6.0,<3",
         "boto3>=1.35,<2",
         "lancedb==0.21.2",
+        "matplotlib>=3.9,<4",
         "numpy>=1.26,<3",
         "pandas>=2.2,<3",
         "pillow>=10,<12",
@@ -26,12 +27,43 @@ image = (
         "requests>=2.32,<3",
         "torch>=2.2,<3",
         "torchvision>=0.17,<1",
+        "umap-learn>=0.5,<1",
         "wandb>=0.19,<1",
     )
     .add_local_file(PROJECT_ROOT / "train.py", "/app/train.py")
     .add_local_file(PROJECT_ROOT / "build_prototypes.py", "/app/build_prototypes.py")
+    .add_local_file(PROJECT_ROOT / "compare_embeddings.py", "/app/compare_embeddings.py")
     .add_local_dir(LOCAL_DATASET, REMOTE_DATASET)
 )
+
+
+@app.function(
+    image=image,
+    gpu="L4",
+    cpu=8,
+    memory=32768,
+    timeout=60 * 60,
+    volumes={REMOTE_MODELS: model_volume},
+)
+def generate_umap_remote(
+    ce_run_name: str,
+    supcon_run_name: str,
+    output_name: str = "ce-vs-supcon-umap.png",
+) -> str:
+    import sys
+
+    sys.path.insert(0, "/app")
+    from compare_embeddings import generate_umap_comparison
+
+    output = Path(REMOTE_MODELS) / "comparisons" / output_name
+    generate_umap_comparison(
+        Path(REMOTE_MODELS) / ce_run_name / "celebrity_face_classifier.pt",
+        Path(REMOTE_MODELS) / supcon_run_name / "celebrity_face_classifier.pt",
+        Path(REMOTE_DATASET),
+        output,
+    )
+    model_volume.commit()
+    return str(output)
 
 
 def configure_aws_identity() -> None:
@@ -73,6 +105,15 @@ def train_remote(
     run_name: str | None = None,
     prototypes_only: bool = False,
     full_data: bool = False,
+    mode: str = "supcon",
+    temperature: float = 0.07,
+    contrastive_weight: float = 0.5,
+    classes_per_batch: int = 16,
+    samples_per_class: int = 4,
+    views_per_image: int = 2,
+    learning_rate: float = 3e-4,
+    backbone_learning_rate: float = 3e-5,
+    publish: bool = True,
 ) -> str:
     import sys
 
@@ -97,8 +138,19 @@ def train_remote(
                 num_workers=8,
                 run_name=run_name,
                 full_data=full_data,
+                mode=mode,
+                temperature=temperature,
+                contrastive_weight=contrastive_weight,
+                classes_per_batch=classes_per_batch,
+                samples_per_class=samples_per_class,
+                views_per_image=views_per_image,
+                learning_rate=learning_rate,
+                backbone_learning_rate=backbone_learning_rate,
             )
         )
+    if not publish:
+        model_volume.commit()
+        return str(final_path)
     build_prototype_database(
         final_path,
         Path(REMOTE_DATASET),
@@ -122,6 +174,29 @@ def main(
     run_name: str | None = None,
     prototypes_only: bool = False,
     full_data: bool = False,
+    mode: str = "supcon",
+    temperature: float = 0.07,
+    contrastive_weight: float = 0.5,
+    classes_per_batch: int = 16,
+    samples_per_class: int = 4,
+    views_per_image: int = 2,
+    learning_rate: float = 3e-4,
+    backbone_learning_rate: float = 3e-5,
+    publish: bool = True,
 ) -> None:
-    result = train_remote.remote(epochs, run_name, prototypes_only, full_data)
+    result = train_remote.remote(
+        epochs,
+        run_name,
+        prototypes_only,
+        full_data,
+        mode,
+        temperature,
+        contrastive_weight,
+        classes_per_batch,
+        samples_per_class,
+        views_per_image,
+        learning_rate,
+        backbone_learning_rate,
+        publish,
+    )
     print(f"Final model saved in Modal Volume: {result}")

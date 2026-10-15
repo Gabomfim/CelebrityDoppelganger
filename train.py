@@ -25,8 +25,11 @@ from torchvision import transforms
 from torchvision.transforms import InterpolationMode
 
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp"}
-IMAGENET_MEAN = (0.485, 0.456, 0.406)
-IMAGENET_STD = (0.229, 0.224, 0.225)
+# facenet-pytorch's VGGFace2 weights were trained with fixed image
+# standardization: (pixel - 127.5) / 128. ToTensor scales pixels to [0, 1],
+# so these constants reproduce that preprocessing exactly.
+FACENET_MEAN = (127.5 / 255,) * 3
+FACENET_STD = (128 / 255,) * 3
 
 
 @dataclass
@@ -53,6 +56,9 @@ class TrainConfig:
     resume: str | None = None
     offline: bool = False
     full_data: bool = False
+    mode: str = "supcon"
+    views_per_image: int = 2
+    selection_metric: str = "separation_ratio"
 
 
 def seed_everything(seed: int) -> None:
@@ -122,7 +128,7 @@ def build_train_transform() -> transforms.Compose:
             transforms.RandomApply([transforms.GaussianBlur(3, sigma=(0.1, 1.5))], p=0.15),
             transforms.RandomRotation(8, interpolation=InterpolationMode.BILINEAR),
             transforms.ToTensor(),
-            transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD),
+            transforms.Normalize(FACENET_MEAN, FACENET_STD),
             transforms.RandomErasing(p=0.15, scale=(0.02, 0.12), ratio=(0.5, 2.0)),
         ]
     )
@@ -134,16 +140,23 @@ def build_eval_transform() -> transforms.Compose:
             transforms.Resize(176, interpolation=InterpolationMode.BILINEAR),
             transforms.CenterCrop(160),
             transforms.ToTensor(),
-            transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD),
+            transforms.Normalize(FACENET_MEAN, FACENET_STD),
         ]
     )
 
 
 class FaceDataset(Dataset[tuple[Tensor, int]]):
-    def __init__(self, paths: list[Path], labels: list[int], transform: transforms.Compose):
+    def __init__(
+        self,
+        paths: list[Path],
+        labels: list[int],
+        transform: transforms.Compose,
+        views_per_image: int = 1,
+    ):
         self.paths = paths
         self.labels = labels
         self.transform = transform
+        self.views_per_image = views_per_image
 
     def __len__(self) -> int:
         return len(self.paths)
@@ -151,9 +164,11 @@ class FaceDataset(Dataset[tuple[Tensor, int]]):
     def __getitem__(self, index: int) -> tuple[Tensor, int]:
         try:
             with Image.open(self.paths[index]) as image:
-                tensor = self.transform(image.convert("RGB"))
+                image = image.convert("RGB")
+                views = [self.transform(image) for _ in range(self.views_per_image)]
         except (OSError, UnidentifiedImageError) as error:
             raise RuntimeError(f"Could not load image {self.paths[index]}") from error
+        tensor = views[0] if self.views_per_image == 1 else torch.stack(views)
         return tensor, self.labels[index]
 
 
@@ -208,6 +223,17 @@ class FaceClassifier(nn.Module):
             nn.Linear(512, embedding_dim),
         )
         self.classifier = nn.Linear(embedding_dim, num_classes)
+        self._initialize_heads()
+
+    def _initialize_heads(self) -> None:
+        """Initialize new heads without disturbing the pretrained face backbone."""
+        first, last = self.projector[0], self.projector[3]
+        nn.init.kaiming_normal_(first.weight, nonlinearity="relu")
+        nn.init.zeros_(first.bias)
+        nn.init.normal_(last.weight, std=0.01)
+        nn.init.zeros_(last.bias)
+        nn.init.normal_(self.classifier.weight, std=0.01)
+        nn.init.zeros_(self.classifier.bias)
 
     def forward(self, images: Tensor) -> tuple[Tensor, Tensor]:
         features = self.backbone(images)
@@ -255,6 +281,55 @@ def make_optimizer(model: FaceClassifier, config: TrainConfig) -> torch.optim.Op
     )
 
 
+@torch.no_grad()
+def embedding_geometry(embeddings: Tensor, labels: Tensor) -> dict[str, float]:
+    """Measure class compactness and separation in normalized embedding space."""
+    embeddings = F.normalize(embeddings.float(), dim=1)
+    classes = labels.unique(sorted=True)
+    prototypes = torch.stack(
+        [F.normalize(embeddings[labels == label].mean(dim=0), dim=0) for label in classes]
+    )
+    class_to_index = {int(label): index for index, label in enumerate(classes.tolist())}
+    target_indices = torch.tensor(
+        [class_to_index[int(label)] for label in labels.tolist()], device=labels.device
+    )
+    similarities = embeddings @ prototypes.T
+    own_similarity = similarities.gather(1, target_indices[:, None]).squeeze(1)
+    other_similarities = similarities.masked_fill(
+        F.one_hot(target_indices, num_classes=len(classes)).bool(), float("-inf")
+    )
+    nearest_other_similarity = other_similarities.max(dim=1).values
+    intra_class_distance = (1 - own_similarity).mean()
+    sample_margin = (own_similarity - nearest_other_similarity).mean()
+
+    prototype_similarity = prototypes @ prototypes.T
+    prototype_similarity.fill_diagonal_(float("-inf"))
+    nearest_centroid_distance = (1 - prototype_similarity.max(dim=1).values).mean()
+    separation_ratio = nearest_centroid_distance / intra_class_distance.clamp_min(1e-6)
+    prototype_accuracy = (similarities.argmax(dim=1) == target_indices).float().mean()
+    return {
+        "intra_class_distance": intra_class_distance.item(),
+        "nearest_centroid_distance": nearest_centroid_distance.item(),
+        "sample_margin": sample_margin.item(),
+        "separation_ratio": separation_ratio.item(),
+        "prototype_accuracy": prototype_accuracy.item(),
+    }
+
+
+@torch.no_grad()
+def evaluate_geometry(
+    model: FaceClassifier, loader: DataLoader, device: torch.device
+) -> dict[str, float]:
+    model.eval()
+    all_embeddings: list[Tensor] = []
+    all_labels: list[Tensor] = []
+    for images, labels in loader:
+        embeddings, _ = model(images.to(device, non_blocking=True))
+        all_embeddings.append(embeddings.cpu())
+        all_labels.append(labels.cpu())
+    return embedding_geometry(torch.cat(all_embeddings), torch.cat(all_labels))
+
+
 def run_epoch(
     model: FaceClassifier,
     loader: DataLoader,
@@ -268,6 +343,10 @@ def run_epoch(
     totals = defaultdict(float)
     sample_count = 0
     for images, labels in loader:
+        if images.ndim == 5:
+            views = images.shape[1]
+            images = images.flatten(0, 1)
+            labels = labels.repeat_interleave(views)
         images, labels = images.to(device, non_blocking=True), labels.to(device, non_blocking=True)
         if training:
             optimizer.zero_grad(set_to_none=True)
@@ -277,8 +356,15 @@ def run_epoch(
         ):
             embeddings, logits = model(images)
             ce_loss = F.cross_entropy(logits, labels)
-            contrastive_loss = supervised_contrastive_loss(embeddings, labels, config.temperature)
-            loss = ce_loss + config.contrastive_weight * contrastive_loss
+            if config.mode == "supcon":
+                contrastive_loss = supervised_contrastive_loss(
+                    embeddings, labels, config.temperature
+                )
+                loss = ce_loss + config.contrastive_weight * contrastive_loss
+            elif config.mode == "ce":
+                loss = ce_loss
+            else:
+                raise ValueError(f"Invalid value for mode: {config.mode}")
         if training and scaler is not None:
             scaler.scale(loss).backward()
             scaler.unscale_(optimizer)
@@ -289,7 +375,8 @@ def run_epoch(
         sample_count += count
         totals["loss"] += loss.item() * count
         totals["ce_loss"] += ce_loss.item() * count
-        totals["contrastive_loss"] += contrastive_loss.item() * count
+        if config.mode == "supcon":
+            totals["contrastive_loss"] += contrastive_loss.item() * count
         totals["accuracy"] += (logits.argmax(dim=1) == labels).sum().item()
     return {name: value / max(1, sample_count) for name, value in totals.items()}
 
@@ -300,13 +387,17 @@ def checkpoint_payload(
     scheduler: torch.optim.lr_scheduler.LRScheduler,
     epoch: int,
     best_accuracy: float,
+    best_selection_score: float,
     class_names: list[str],
     config: TrainConfig,
 ) -> dict[str, Any]:
     return {
-        "format_version": 1,
+        "format_version": 2,
+        "backbone_pretraining": "vggface2",
+        "input_standardization": "facenet_fixed_image_standardization",
         "epoch": epoch,
         "best_validation_accuracy": best_accuracy,
+        "best_validation_selection_score": best_selection_score,
         "model_state_dict": model.state_dict(),
         "optimizer_state_dict": optimizer.state_dict(),
         "scheduler_state_dict": scheduler.state_dict(),
@@ -317,6 +408,20 @@ def checkpoint_payload(
 
 def train(config: TrainConfig) -> Path:
     import wandb
+
+    if config.mode not in {"ce", "supcon"}:
+        raise ValueError(f"Invalid value for mode: {config.mode}")
+    if config.temperature <= 0:
+        raise ValueError("temperature must be positive")
+    if config.views_per_image < 1:
+        raise ValueError("views_per_image must be at least 1")
+    if config.selection_metric not in {
+        "nearest_centroid_distance",
+        "sample_margin",
+        "separation_ratio",
+        "prototype_accuracy",
+    }:
+        raise ValueError(f"Unsupported selection metric: {config.selection_metric}")
 
     seed_everything(config.seed)
     device = torch.device(
@@ -349,7 +454,12 @@ def train(config: TrainConfig) -> Path:
         "persistent_workers": config.num_workers > 0,
     }
     train_loader = DataLoader(
-        FaceDataset(train_paths, train_labels, build_train_transform()),
+        FaceDataset(
+            train_paths,
+            train_labels,
+            build_train_transform(),
+            views_per_image=config.views_per_image if config.mode == "supcon" else 1,
+        ),
         batch_sampler=sampler,
         **loader_kwargs,
     )
@@ -372,7 +482,7 @@ def train(config: TrainConfig) -> Path:
     (output_dir / "classes.json").write_text(
         json.dumps(class_names, indent=2, ensure_ascii=False), encoding="utf-8"
     )
-    start_epoch, best_accuracy, stale_epochs = 0, -1.0, 0
+    start_epoch, best_accuracy, best_selection_score, stale_epochs = 0, -1.0, -math.inf, 0
     if config.resume:
         state = torch.load(config.resume, map_location=device, weights_only=False)
         load_face_classifier_state(model, state["model_state_dict"])
@@ -380,6 +490,7 @@ def train(config: TrainConfig) -> Path:
         scheduler.load_state_dict(state["scheduler_state_dict"])
         start_epoch = int(state["epoch"]) + 1
         best_accuracy = float(state["best_validation_accuracy"])
+        best_selection_score = float(state.get("best_validation_selection_score", -math.inf))
     run = wandb.init(
         project=config.wandb_project,
         entity=config.wandb_entity,
@@ -387,7 +498,7 @@ def train(config: TrainConfig) -> Path:
         config=asdict(config),
         mode="offline" if config.offline else os.getenv("WANDB_MODE", "online"),
         tags=[
-            "supervised-contrastive",
+            config.mode,
             "facenet",
             "vggface2",
             "full-data-refit" if config.full_data else "evaluation-split",
@@ -405,11 +516,18 @@ def train(config: TrainConfig) -> Path:
     for epoch in range(start_epoch, config.epochs):
         sampler.set_epoch(epoch)
         train_metrics = run_epoch(model, train_loader, device, config, optimizer, scaler)
+
         validation_metrics = (
             None
             if validation_loader is None
             else run_epoch(model, validation_loader, device, config)
         )
+        geometry_metrics = (
+            None
+            if validation_loader is None
+            else evaluate_geometry(model, validation_loader, device)
+        )
+
         scheduler.step()
         metrics = {
             **{f"train/{key}": value for key, value in train_metrics.items()},
@@ -421,23 +539,40 @@ def train(config: TrainConfig) -> Path:
             metrics.update(
                 {f"validation/{key}": value for key, value in validation_metrics.items()}
             )
+        if geometry_metrics is not None:
+            metrics.update({f"validation/{key}": value for key, value in geometry_metrics.items()})
         run.log(metrics, step=epoch)
         payload = checkpoint_payload(
-            model, optimizer, scheduler, epoch, best_accuracy, class_names, config
+            model,
+            optimizer,
+            scheduler,
+            epoch,
+            best_accuracy,
+            best_selection_score,
+            class_names,
+            config,
         )
+        payload["validation_geometry"] = geometry_metrics
         epoch_path = output_dir / f"checkpoint-{epoch + 1:03d}.pt"
         torch.save(payload, epoch_path)
         current_accuracy = validation_metrics["accuracy"] if validation_metrics else None
+        current_selection_score = (
+            geometry_metrics[config.selection_metric] if geometry_metrics is not None else None
+        )
         if config.full_data:
             torch.save(payload, best_path)
-        elif current_accuracy is not None and current_accuracy > best_accuracy:
-            best_accuracy, stale_epochs = current_accuracy, 0
+        elif current_selection_score is not None and current_selection_score > best_selection_score:
+            best_accuracy = current_accuracy if current_accuracy is not None else best_accuracy
+            best_selection_score, stale_epochs = current_selection_score, 0
             payload["best_validation_accuracy"] = best_accuracy
+            payload["best_validation_selection_score"] = best_selection_score
             torch.save(payload, best_path)
         else:
             stale_epochs += 1
         validation_summary = (
             f" val_loss={validation_metrics['loss']:.4f} val_acc={current_accuracy:.4f}"
+            f" val_ratio={geometry_metrics['separation_ratio']:.4f}"
+            f" val_margin={geometry_metrics['sample_margin']:.4f}"
             if validation_metrics is not None and current_accuracy is not None
             else " full_data=true"
         )
@@ -455,13 +590,19 @@ def train(config: TrainConfig) -> Path:
         "celebrity-face-classifier",
         type="model",
         metadata={
-            "format_version": 1,
+            "format_version": 2,
             "backbone": "InceptionResnetV1-vggface2",
+            "input_standardization": "facenet_fixed_image_standardization",
             "best_validation_accuracy": (
                 None if config.full_data else best_state["best_validation_accuracy"]
             ),
             "training_scope": "full_dataset" if config.full_data else "evaluation_split",
             "num_classes": len(class_names),
+            "mode": config.mode,
+            "selection_metric": config.selection_metric,
+            "best_validation_selection_score": (
+                None if config.full_data else best_state["best_validation_selection_score"]
+            ),
         },
     )
     artifact.add_file(str(final_path))
@@ -469,6 +610,9 @@ def train(config: TrainConfig) -> Path:
     run.log_artifact(artifact, aliases=["latest", "best"])
     if not config.full_data:
         run.summary["best_validation_accuracy"] = best_state["best_validation_accuracy"]
+        run.summary["best_validation_selection_score"] = best_state[
+            "best_validation_selection_score"
+        ]
     run.summary["training_scope"] = "full_dataset" if config.full_data else "evaluation_split"
     run.finish()
     return final_path
