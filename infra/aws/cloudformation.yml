@@ -8,12 +8,24 @@ Parameters:
   DesiredCount:
     Type: Number
     Default: 0
-    AllowedValues: [0, 1, 2]
+    AllowedValues: [0, 1]
+  MonthlyBudgetAmount:
+    Type: Number
+    Default: 25
+    MinValue: 1
+    Description: Monthly AWS cost budget in USD. This alerts but does not stop resources.
+  BudgetAlertEmail:
+    Type: String
+    Default: ""
+    Description: Optional email address for budget alerts. Leave blank to skip the budget resource.
   GitHubOidcProviderArn:
     Type: String
   ProjectBucketName:
     Type: String
     Default: celebrity-twin-832271495954-us-east-1
+
+Conditions:
+  CreateBudget: !Not [!Equals [!Ref BudgetAlertEmail, ""]]
 
 Resources:
   Vpc:
@@ -104,13 +116,13 @@ Resources:
       ClusterName: celebrity-twin
       ClusterSettings:
         - Name: containerInsights
-          Value: enabled
+          Value: disabled
 
   LogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: /ecs/celebrity-twin
-      RetentionInDays: 30
+      RetentionInDays: 7
 
   AnalyticsDashboard:
     Type: AWS::CloudWatch::Dashboard
@@ -171,8 +183,8 @@ Resources:
     Type: AWS::ECS::TaskDefinition
     Properties:
       Family: celebrity-twin
-      Cpu: "2048"
-      Memory: "4096"
+      Cpu: "1024"
+      Memory: "2048"
       NetworkMode: awsvpc
       RequiresCompatibilities: [FARGATE]
       RuntimePlatform:
@@ -193,6 +205,7 @@ Resources:
             - { Name: PROTOTYPE_DATABASE_URI, Value: !Sub "s3://${ProjectBucketName}/vector/prototypes.lancedb" }
             - { Name: CELEBRITY_PHOTO_S3_PREFIX, Value: !Sub "s3://${ProjectBucketName}/photos/celebrities" }
             - { Name: LINKEDIN_URL, Value: "https://www.linkedin.com/in/gabrielabsilveira/" }
+            - { Name: MAX_CONCURRENT_MATCHES, Value: "1" }
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -282,13 +295,89 @@ Resources:
         DefaultCacheBehavior:
           TargetOriginId: alb-origin
           ViewerProtocolPolicy: redirect-to-https
-          AllowedMethods: [DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT]
+          AllowedMethods: [GET, HEAD, OPTIONS]
           CachedMethods: [GET, HEAD, OPTIONS]
-          CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
-          OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
+          CachePolicyId: !Ref StaticCachePolicy
           Compress: true
+        OrderedCacheBehaviors:
+          - PathPattern: /api/celebrity-photo/*
+            TargetOriginId: alb-origin
+            ViewerProtocolPolicy: redirect-to-https
+            AllowedMethods: [GET, HEAD, OPTIONS]
+            CachedMethods: [GET, HEAD, OPTIONS]
+            CachePolicyId: !Ref CelebrityPhotoCachePolicy
+            Compress: true
+          - PathPattern: /api/*
+            TargetOriginId: alb-origin
+            ViewerProtocolPolicy: redirect-to-https
+            AllowedMethods: [DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT]
+            CachedMethods: [GET, HEAD, OPTIONS]
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
+            Compress: true
         ViewerCertificate:
           CloudFrontDefaultCertificate: true
+
+  StaticCachePolicy:
+    Type: AWS::CloudFront::CachePolicy
+    Properties:
+      CachePolicyConfig:
+        Name: celebrity-twin-static-v1
+        Comment: Short edge cache for deployable HTML, CSS, JavaScript, and images.
+        DefaultTTL: 300
+        MaxTTL: 3600
+        MinTTL: 0
+        ParametersInCacheKeyAndForwardedToOrigin:
+          CookiesConfig: { CookieBehavior: none }
+          EnableAcceptEncodingBrotli: true
+          EnableAcceptEncodingGzip: true
+          HeadersConfig: { HeaderBehavior: none }
+          QueryStringsConfig: { QueryStringBehavior: none }
+
+  CelebrityPhotoCachePolicy:
+    Type: AWS::CloudFront::CachePolicy
+    Properties:
+      CachePolicyConfig:
+        Name: celebrity-twin-photos-v1
+        Comment: Long edge cache for public celebrity photos.
+        DefaultTTL: 86400
+        MaxTTL: 604800
+        MinTTL: 0
+        ParametersInCacheKeyAndForwardedToOrigin:
+          CookiesConfig: { CookieBehavior: none }
+          EnableAcceptEncodingBrotli: true
+          EnableAcceptEncodingGzip: true
+          HeadersConfig: { HeaderBehavior: none }
+          QueryStringsConfig: { QueryStringBehavior: none }
+
+  MonthlyCostBudget:
+    Type: AWS::Budgets::Budget
+    Condition: CreateBudget
+    Properties:
+      Budget:
+        BudgetName: celebrity-twin-monthly-cost
+        BudgetLimit:
+          Amount: !Ref MonthlyBudgetAmount
+          Unit: USD
+        BudgetType: COST
+        TimeUnit: MONTHLY
+      NotificationsWithSubscribers:
+        - Notification:
+            ComparisonOperator: GREATER_THAN
+            NotificationType: FORECASTED
+            Threshold: 75
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - Address: !Ref BudgetAlertEmail
+              SubscriptionType: EMAIL
+        - Notification:
+            ComparisonOperator: GREATER_THAN
+            NotificationType: ACTUAL
+            Threshold: 90
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - Address: !Ref BudgetAlertEmail
+              SubscriptionType: EMAIL
 
   GitHubDeployRole:
     Type: AWS::IAM::Role

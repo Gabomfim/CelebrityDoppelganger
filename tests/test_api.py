@@ -67,6 +67,14 @@ def test_social_links_are_configured(monkeypatch):
     assert "github.com/Gabomfim/CelebrityDoppelganger" in response.json()["github_url"]
 
 
+def test_cache_headers_keep_private_api_dynamic_and_cache_public_assets():
+    with TestClient(app) as client:
+        config = client.get("/api/config")
+        stylesheet = client.get("/styles.css")
+    assert config.headers["cache-control"] == "no-store"
+    assert stylesheet.headers["cache-control"] == "public, max-age=300"
+
+
 def test_portuguese_locale_is_suggested_without_exposing_location():
     with TestClient(app) as client:
         response = client.get(
