@@ -173,6 +173,16 @@ def test_methodology_page_explains_validated_training_pipeline():
     assert "VGGFace2" in html
     assert "5.34 → 9.55" in html
     assert "Selfies and the temporary prototype" in html
+    assert 'src="images/ce-vs-supcon-umap.png?v=20261020"' in html
+    assert 'loading="eager"' in html
+
+
+def test_methodology_umap_image_is_served():
+    with TestClient(app) as client:
+        response = client.get("/images/ce-vs-supcon-umap.png")
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/png"
+    assert response.content.startswith(b"\x89PNG\r\n\x1a\n")
 
 
 def test_results_include_private_social_share_experience():
