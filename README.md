@@ -42,6 +42,11 @@ flowchart LR
 5. The frontend displays at most three matches with photos, occupations, biographies, and
    Wikipedia links.
 
+The interface is available in English and Brazilian Portuguese. CloudFront's viewer-country
+header supplies a privacy-preserving language suggestion for Portuguese-speaking countries;
+the browser language is the local-development fallback, and a visitor's saved EN/PT choice always
+wins. The application does not expose or retain the visitor's IP address or country.
+
 ## Technology
 
 | Area | Tools |

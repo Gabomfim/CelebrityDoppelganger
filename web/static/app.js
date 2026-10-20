@@ -123,7 +123,11 @@ async function loadConfig() {
 }
 
 function showStatus(message = "") {
-  status.textContent = message;
+  status.textContent = window.CelebrityTwinI18n?.t(message) || message;
+}
+
+function translated(message) {
+  return window.CelebrityTwinI18n?.t(message) || message;
 }
 
 function revokePreviews() {
@@ -454,6 +458,9 @@ function escapeHtml(value) {
 }
 
 function shareCaption(match) {
+  if (window.CelebrityTwinI18n?.locale === "pt-BR") {
+    return `Saiu o resultado ✨ Meu sósia famoso é ${match.name} — ${match.similarity}% de semelhança! Qual é o seu? ${window.location.origin}`;
+  }
   return `The verdict is in ✨ My Celebrity Twin is ${match.name} — a ${match.similarity}% match! Who is yours? ${window.location.origin}`;
 }
 
@@ -498,7 +505,7 @@ function fitHeadline(context, text, maxWidth, startSize, minimumSize = 54) {
 
 async function loadSharePhoto(url) {
   const response = await fetch(url, { cache: "no-store" });
-  if (!response.ok) throw new Error("We couldn't prepare the celebrity photo.");
+  if (!response.ok) throw new Error(translated("We couldn't prepare the celebrity photo."));
   const objectUrl = URL.createObjectURL(await response.blob());
   const image = new Image();
   image.src = objectUrl;
@@ -543,7 +550,7 @@ async function createShareCard(match) {
   context.font = "800 25px DM Sans, Arial, sans-serif";
   context.textAlign = "center";
   context.letterSpacing = "5px";
-  context.fillText("THE RED CARPET REVEAL", width / 2, 116);
+  context.fillText(translated("THE RED CARPET REVEAL"), width / 2, 116);
   context.letterSpacing = "0px";
 
   drawCoverImage(context, photo, 150, 155, 780, 650, 36);
@@ -554,7 +561,7 @@ async function createShareCard(match) {
 
   context.fillStyle = "#fff5df";
   context.font = "700 31px DM Sans, Arial, sans-serif";
-  context.fillText("MY CELEBRITY LOOKALIKE IS", width / 2, 872);
+  context.fillText(translated("MY CELEBRITY LOOKALIKE IS"), width / 2, 872);
   const name = String(match.name).toUpperCase();
   const nameSize = fitHeadline(context, name, 900, 94);
   context.fillStyle = "#f4cb68";
@@ -567,7 +574,7 @@ async function createShareCard(match) {
   context.fill();
   context.fillStyle = "#5b1225";
   context.font = "900 30px DM Sans, Arial, sans-serif";
-  context.fillText(`${match.similarity}% TWIN`, width / 2, 1065);
+  context.fillText(`${match.similarity}% ${translated("TWIN")}`, width / 2, 1065);
 
   context.strokeStyle = "rgba(244,203,104,.45)";
   context.lineWidth = 2;
@@ -670,12 +677,19 @@ async function openShareDialog() {
 
 function renderResults(matches) {
   currentMatches = matches;
+  const portuguese = window.CelebrityTwinI18n?.locale === "pt-BR";
   resultGrid.innerHTML = matches
     .map((match, index) => {
       const wikipediaUrl =
         match.wikipedia_url ||
         `https://en.wikipedia.org/wiki/Special:Search?search=${encodeURIComponent(match.name)}`;
-      return `<a class="match-card" href="${encodeURI(wikipediaUrl)}" target="_blank" rel="noreferrer" aria-label="Read about ${escapeHtml(match.name)} on Wikipedia"><div class="match-photo"><img src="${encodeURI(match.photo_url)}" alt="${escapeHtml(match.name)}" loading="lazy"><span class="match-rank">#${index + 1} match</span><span class="similarity">${match.similarity}% twin</span></div><div class="match-copy"><div class="profession">${escapeHtml(match.profession || "Biography")}</div><h3>${escapeHtml(match.name)}</h3><p class="curiosity">${escapeHtml(match.why_famous || match.most_famous_for || `${match.name} is known for a notable career in entertainment.`)}</p><span class="wiki">Meet ${escapeHtml(match.name)} on Wikipedia ↗</span></div></a>`;
+      const aria = portuguese ? `Leia sobre ${match.name} na Wikipédia` : `Read about ${match.name} on Wikipedia`;
+      const rank = portuguese ? `#${index + 1} resultado` : `#${index + 1} match`;
+      const twin = portuguese ? "sósia" : "twin";
+      const biography = portuguese ? "Biografia" : "Biography";
+      const fallback = portuguese ? `${match.name} é conhecido por uma carreira de destaque no entretenimento.` : `${match.name} is known for a notable career in entertainment.`;
+      const wiki = portuguese ? `Conheça ${match.name} na Wikipédia ↗` : `Meet ${match.name} on Wikipedia ↗`;
+      return `<a class="match-card" href="${encodeURI(wikipediaUrl)}" target="_blank" rel="noreferrer" aria-label="${escapeHtml(aria)}"><div class="match-photo"><img src="${encodeURI(match.photo_url)}" alt="${escapeHtml(match.name)}" loading="lazy"><span class="match-rank">${rank}</span><span class="similarity">${match.similarity}% ${twin}</span></div><div class="match-copy"><div class="profession">${escapeHtml(match.profession || biography)}</div><h3>${escapeHtml(match.name)}</h3><p class="curiosity">${escapeHtml(match.why_famous || match.most_famous_for || fallback)}</p><span class="wiki">${escapeHtml(wiki)}</span></div></a>`;
     })
     .join("");
 }
