@@ -67,6 +67,24 @@ def test_social_links_are_configured(monkeypatch):
     assert "github.com/Gabomfim/CelebrityDoppelganger" in response.json()["github_url"]
 
 
+def test_portuguese_locale_is_suggested_without_exposing_location():
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/config",
+            headers={"cloudfront-viewer-country": "BR", "accept-language": "en-US"},
+        )
+    assert response.json()["suggested_locale"] == "pt-BR"
+    assert "country" not in response.json()
+
+
+def test_browser_language_is_a_local_development_fallback():
+    with TestClient(app) as client:
+        portuguese = client.get("/api/config", headers={"accept-language": "pt-PT"})
+        english = client.get("/api/config", headers={"accept-language": "en-US"})
+    assert portuguese.json()["suggested_locale"] == "pt-BR"
+    assert english.json()["suggested_locale"] == "en"
+
+
 def test_analytics_accepts_only_anonymous_allowlisted_data(capsys):
     with TestClient(app) as client:
         response = client.post(
@@ -124,6 +142,18 @@ def test_camera_controls_have_safe_initial_state():
     assert 'analyticsPreference === "off"' in client.get("/app.js").text
     assert "if (!analyticsEnabled) return" in client.get("/app.js").text
     assert "[hidden] { display:none !important; }" in css
+    assert 'data-locale="en"' in html and 'data-locale="pt-BR"' in html
+    assert "/i18n.js" in html
+
+
+def test_portuguese_translation_covers_the_experience():
+    with TestClient(app) as client:
+        javascript = client.get("/i18n.js").text
+        methodology = client.get("/methodology.html").text
+    assert "Seus três sósias famosos mais convincentes" in javascript
+    assert "Privacidade faz parte da arquitetura" in javascript
+    assert "A REVELAÇÃO DO TAPETE VERMELHO" in javascript
+    assert 'data-locale="pt-BR"' in methodology
 
 
 def test_methodology_page_explains_validated_training_pipeline():

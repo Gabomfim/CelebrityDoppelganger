@@ -63,6 +63,7 @@ ANALYTICS_CATEGORIES = {
     "os": {"Android", "iOS", "Linux", "macOS", "Windows", "Other"},
 }
 SESSION_ID_PATTERN = re.compile(r"^[A-Za-z0-9-]{16,64}$")
+PORTUGUESE_COUNTRIES = {"AO", "BR", "CV", "GQ", "GW", "MO", "MZ", "PT", "ST", "TL"}
 
 
 class FaceNotDetectedError(ValueError):
@@ -230,8 +231,17 @@ async def security_headers(request: Request, call_next):
 
 
 @app.get("/api/config")
-def config() -> dict[str, str | None]:
-    return {"github_url": GITHUB_URL, "linkedin_url": os.getenv("LINKEDIN_URL", LINKEDIN_URL)}
+def config(request: Request) -> dict[str, str | None]:
+    country = request.headers.get("cloudfront-viewer-country", "").upper()
+    accept_language = request.headers.get("accept-language", "").lower()
+    suggested_locale = (
+        "pt-BR" if country in PORTUGUESE_COUNTRIES or "pt" in accept_language else "en"
+    )
+    return {
+        "github_url": GITHUB_URL,
+        "linkedin_url": os.getenv("LINKEDIN_URL", LINKEDIN_URL),
+        "suggested_locale": suggested_locale,
+    }
 
 
 @app.get("/api/health")
