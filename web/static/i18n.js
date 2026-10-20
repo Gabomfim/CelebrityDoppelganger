@@ -104,6 +104,7 @@
     "Use camera": "Usar câmera",
     "Reading the stars…": "Consultando as estrelas…",
     "Matching failed. Please try again.": "Não foi possível comparar. Tente novamente.",
+    "The face studio is busy. Please wait a moment and try again.": "O estúdio está ocupado. Aguarde um momento e tente novamente.",
     "Caption copied — paste it with your reveal card.": "Legenda copiada — cole junto com seu card.",
     "We couldn't prepare the celebrity photo.": "Não foi possível preparar a foto da celebridade.",
     "Your red carpet reveal is ready for its audience!": "Sua revelação no tapete vermelho está pronta!",

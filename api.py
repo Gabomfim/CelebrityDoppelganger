@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import io
 import json
 import os
@@ -30,6 +31,7 @@ MAX_IMAGE_BYTES = 10 * 1024 * 1024
 PROTOTYPE_IMAGE_COUNT = 3
 MAX_PROTOTYPE_REQUEST_BYTES = 42 * 1024 * 1024
 MAX_ANALYTICS_REQUEST_BYTES = 4096
+MAX_CONCURRENT_MATCHES = max(1, int(os.getenv("MAX_CONCURRENT_MATCHES", "1")))
 GITHUB_URL = "https://github.com/Gabomfim/CelebrityDoppelganger"
 LINKEDIN_URL = "https://www.linkedin.com/in/gabrielabsilveira/"
 ANALYTICS_EVENTS = {
@@ -202,6 +204,7 @@ def create_matcher() -> CelebrityMatcher:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    app.state.inference_slots = asyncio.Semaphore(MAX_CONCURRENT_MATCHES)
     try:
         app.state.matcher = create_matcher()
         app.state.startup_error = None
@@ -210,6 +213,23 @@ async def lifespan(app: FastAPI):
         app.state.startup_error = str(error)
     yield
     app.state.matcher = None
+
+
+async def run_bounded_inference(request: Request, operation):
+    """Reject excess inference instead of building an unbounded, costly request queue."""
+    slots: asyncio.Semaphore = request.app.state.inference_slots
+    try:
+        await asyncio.wait_for(slots.acquire(), timeout=0.01)
+    except TimeoutError as error:
+        raise HTTPException(
+            status_code=429,
+            detail="The face studio is busy. Please wait a moment and try again.",
+            headers={"Retry-After": "10"},
+        ) from error
+    try:
+        return await asyncio.to_thread(operation)
+    finally:
+        slots.release()
 
 
 app = FastAPI(
@@ -223,7 +243,12 @@ app = FastAPI(
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
     response = await call_next(request)
-    response.headers["Cache-Control"] = "no-store"
+    if request.url.path.startswith("/api/celebrity-photo/"):
+        response.headers["Cache-Control"] = "public, max-age=86400"
+    elif request.url.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store"
+    else:
+        response.headers["Cache-Control"] = "public, max-age=300"
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "camera=(self)"
@@ -312,7 +337,8 @@ async def match(request: Request) -> dict[str, Any]:
     if not body:
         raise HTTPException(status_code=400, detail="The image is empty")
     try:
-        results = matcher.match(bytes(body))
+        image_bytes = bytes(body)
+        results = await run_bounded_inference(request, lambda: matcher.match(image_bytes))
     except FaceNotDetectedError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     except ValueError as error:
@@ -359,7 +385,10 @@ async def match_prototype(request: Request) -> dict[str, Any]:
                     status_code=413, detail="Each selfie must be smaller than 10 MB"
                 )
             images.append(image)
-        results = matcher.match_prototype(images)
+        inference_images = list(images)
+        results = await run_bounded_inference(
+            request, lambda: matcher.match_prototype(inference_images)
+        )
     except FaceNotDetectedError as error:
         raise HTTPException(
             status_code=422,

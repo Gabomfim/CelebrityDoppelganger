@@ -47,6 +47,23 @@ header supplies a privacy-preserving language suggestion for Portuguese-speaking
 the browser language is the local-development fallback, and a visitor's saved EN/PT choice always
 wins. The application does not expose or retain the visitor's IP address or country.
 
+## Cost guardrails
+
+Production deliberately favors predictable cost over unlimited throughput. ECS is capped at one
+1-vCPU/2-GB Fargate task and has no service auto-scaling policy. Recent production telemetry showed
+roughly 16% memory utilization and a 14% peak CPU utilization on the former 2-vCPU/4-GB task, so the
+smaller task retains operating headroom while approximately halving the fixed compute allocation.
+Only one face-matching operation runs at a
+time; excess requests receive HTTP 429 with a short retry instruction instead of accumulating an
+unbounded inference queue. CloudFront caches the static site for five minutes and public celebrity
+photos for one day, while all private and dynamic `/api/*` responses remain uncached. Container
+Insights is disabled and application logs expire after seven days.
+
+The CloudFormation stack can optionally create a monthly AWS cost budget with forecasted and actual
+email alerts. Set `MonthlyBudgetAmount` and `BudgetAlertEmail` when deploying the stack. AWS Budgets
+alerts do not constitute a hard spending cap; the one-task ECS limit and bounded inference are the
+hard application-capacity safeguards.
+
 ## Technology
 
 | Area | Tools |
