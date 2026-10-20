@@ -135,3 +135,16 @@ def test_methodology_page_explains_validated_training_pipeline():
     assert "VGGFace2" in html
     assert "5.34 → 9.55" in html
     assert "Selfies and the temporary prototype" in html
+
+
+def test_results_include_private_social_share_experience():
+    with TestClient(app) as client:
+        html = client.get("/").text
+        javascript = client.get("/app.js").text
+    assert 'id="share-reveal-button"' in html
+    assert 'id="share-dialog"' in html
+    for platform in ("instagram", "facebook", "whatsapp", "x", "threads", "native"):
+        assert f'data-share-platform="{platform}"' in html
+    assert "createShareCard" in javascript
+    assert "navigator.canShare" in javascript
+    assert "Your selfies are never included or stored" in html

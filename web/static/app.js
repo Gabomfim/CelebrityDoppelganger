@@ -13,10 +13,21 @@ const againButton = document.querySelector("#again-button");
 const countdown = document.querySelector("#countdown");
 const flash = document.querySelector("#flash");
 const shotStrip = document.querySelector("#shot-strip");
+const shareRevealButton = document.querySelector("#share-reveal-button");
+const shareDialog = document.querySelector("#share-dialog");
+const shareClose = document.querySelector("#share-close");
+const sharePreview = document.querySelector("#share-preview");
+const shareStatus = document.querySelector("#share-status");
+const shareCanvas = document.querySelector("#share-canvas");
+const downloadShareButton = document.querySelector("#download-share");
+const copyShareTextButton = document.querySelector("#copy-share-text");
 
 let stream = null;
 let selectedBlobs = [];
 let previewUrls = [];
+let currentMatches = [];
+let shareBlob = null;
+let sharePreviewUrl = null;
 const analyticsStartedAt = Date.now();
 let analyticsEngaged = false;
 let analyticsEnded = false;
@@ -442,7 +453,223 @@ function escapeHtml(value) {
   return node.innerHTML;
 }
 
+function shareCaption(match) {
+  return `The verdict is in ✨ My Celebrity Twin is ${match.name} — a ${match.similarity}% match! Who is yours? ${window.location.origin}`;
+}
+
+function roundedRectangle(context, x, y, width, height, radius) {
+  const corner = Math.min(radius, width / 2, height / 2);
+  context.beginPath();
+  context.moveTo(x + corner, y);
+  context.arcTo(x + width, y, x + width, y + height, corner);
+  context.arcTo(x + width, y + height, x, y + height, corner);
+  context.arcTo(x, y + height, x, y, corner);
+  context.arcTo(x, y, x + width, y, corner);
+  context.closePath();
+}
+
+function drawCoverImage(context, image, x, y, width, height, radius) {
+  const scale = Math.max(width / image.naturalWidth, height / image.naturalHeight);
+  const sourceWidth = width / scale;
+  const sourceHeight = height / scale;
+  const sourceX = (image.naturalWidth - sourceWidth) / 2;
+  const sourceY = Math.max(0, (image.naturalHeight - sourceHeight) * 0.22);
+  context.save();
+  roundedRectangle(context, x, y, width, height, radius);
+  context.clip();
+  context.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, x, y, width, height);
+  const shade = context.createLinearGradient(0, y + height * 0.58, 0, y + height);
+  shade.addColorStop(0, "rgba(30,4,12,0)");
+  shade.addColorStop(1, "rgba(30,4,12,.72)");
+  context.fillStyle = shade;
+  context.fillRect(x, y, width, height);
+  context.restore();
+}
+
+function fitHeadline(context, text, maxWidth, startSize, minimumSize = 54) {
+  let size = startSize;
+  do {
+    context.font = `900 ${size}px Fraunces, Georgia, serif`;
+    if (context.measureText(text).width <= maxWidth) return size;
+    size -= 4;
+  } while (size > minimumSize);
+  return minimumSize;
+}
+
+async function loadSharePhoto(url) {
+  const response = await fetch(url, { cache: "no-store" });
+  if (!response.ok) throw new Error("We couldn't prepare the celebrity photo.");
+  const objectUrl = URL.createObjectURL(await response.blob());
+  const image = new Image();
+  image.src = objectUrl;
+  try {
+    await image.decode();
+    return image;
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+async function createShareCard(match) {
+  await document.fonts?.ready;
+  const photo = await loadSharePhoto(match.photo_url);
+  const context = shareCanvas.getContext("2d");
+  const width = shareCanvas.width;
+  const height = shareCanvas.height;
+
+  const background = context.createLinearGradient(0, 0, width, height);
+  background.addColorStop(0, "#16070b");
+  background.addColorStop(0.48, "#64142a");
+  background.addColorStop(1, "#21080f");
+  context.fillStyle = background;
+  context.fillRect(0, 0, width, height);
+
+  const spotlight = context.createRadialGradient(width / 2, 180, 20, width / 2, 420, 610);
+  spotlight.addColorStop(0, "rgba(255,231,169,.28)");
+  spotlight.addColorStop(1, "rgba(255,231,169,0)");
+  context.fillStyle = spotlight;
+  context.fillRect(0, 0, width, 900);
+
+  context.strokeStyle = "#e5b84d";
+  context.lineWidth = 6;
+  roundedRectangle(context, 34, 34, width - 68, height - 68, 34);
+  context.stroke();
+  context.strokeStyle = "rgba(229,184,77,.34)";
+  context.lineWidth = 2;
+  roundedRectangle(context, 52, 52, width - 104, height - 104, 26);
+  context.stroke();
+
+  context.fillStyle = "#f0c761";
+  context.font = "800 25px DM Sans, Arial, sans-serif";
+  context.textAlign = "center";
+  context.letterSpacing = "5px";
+  context.fillText("THE RED CARPET REVEAL", width / 2, 116);
+  context.letterSpacing = "0px";
+
+  drawCoverImage(context, photo, 150, 155, 780, 650, 36);
+  context.strokeStyle = "rgba(248,215,125,.9)";
+  context.lineWidth = 5;
+  roundedRectangle(context, 150, 155, 780, 650, 36);
+  context.stroke();
+
+  context.fillStyle = "#fff5df";
+  context.font = "700 31px DM Sans, Arial, sans-serif";
+  context.fillText("MY CELEBRITY LOOKALIKE IS", width / 2, 872);
+  const name = String(match.name).toUpperCase();
+  const nameSize = fitHeadline(context, name, 900, 94);
+  context.fillStyle = "#f4cb68";
+  context.font = `900 ${nameSize}px Fraunces, Georgia, serif`;
+  context.fillText(name, width / 2, 972);
+
+  const pillWidth = 270;
+  roundedRectangle(context, (width - pillWidth) / 2, 1018, pillWidth, 70, 35);
+  context.fillStyle = "#fff8e8";
+  context.fill();
+  context.fillStyle = "#5b1225";
+  context.font = "900 30px DM Sans, Arial, sans-serif";
+  context.fillText(`${match.similarity}% TWIN`, width / 2, 1065);
+
+  context.strokeStyle = "rgba(244,203,104,.45)";
+  context.lineWidth = 2;
+  context.beginPath();
+  context.moveTo(135, 1144);
+  context.lineTo(945, 1144);
+  context.stroke();
+  context.fillStyle = "#fff8e8";
+  context.font = "900 46px Fraunces, Georgia, serif";
+  context.fillText("★  Celebrity Twin", width / 2, 1216);
+  context.fillStyle = "rgba(255,248,232,.76)";
+  context.font = "600 22px DM Sans, Arial, sans-serif";
+  context.fillText("d3tc24jtdkcl2p.cloudfront.net", width / 2, 1262);
+
+  return new Promise((resolve, reject) => {
+    shareCanvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error("We couldn't create the reveal card."))),
+      "image/png",
+    );
+  });
+}
+
+function shareFilename(match) {
+  const slug = match.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  return `celebrity-twin-${slug || "reveal"}.png`;
+}
+
+function downloadShareCard() {
+  if (!shareBlob || !currentMatches[0]) return;
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(shareBlob);
+  link.download = shareFilename(currentMatches[0]);
+  link.click();
+  window.setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+}
+
+async function copyShareCaption() {
+  const caption = shareCaption(currentMatches[0]);
+  await navigator.clipboard.writeText(caption);
+  shareStatus.textContent = "Caption copied — paste it with your reveal card.";
+}
+
+function fallbackShareUrl(platform, caption) {
+  const encodedCaption = encodeURIComponent(caption);
+  const encodedSite = encodeURIComponent(window.location.origin);
+  if (platform === "whatsapp") return `https://wa.me/?text=${encodedCaption}`;
+  if (platform === "facebook") return `https://www.facebook.com/sharer/sharer.php?u=${encodedSite}`;
+  if (platform === "x") return `https://twitter.com/intent/tweet?text=${encodedCaption}`;
+  if (platform === "threads") return `https://www.threads.net/intent/post?text=${encodedCaption}`;
+  if (platform === "instagram") return "https://www.instagram.com/";
+  return null;
+}
+
+async function shareToPlatform(platform) {
+  if (!shareBlob || !currentMatches[0]) return;
+  const match = currentMatches[0];
+  const caption = shareCaption(match);
+  const file = new File([shareBlob], shareFilename(match), { type: "image/png" });
+  if (navigator.share && navigator.canShare?.({ files: [file] })) {
+    try {
+      await navigator.share({ title: "My Celebrity Twin", text: caption, files: [file] });
+      shareStatus.textContent = "Your red carpet reveal is ready for its audience!";
+      sendAnalytics("share_completed");
+      return;
+    } catch (error) {
+      if (error?.name === "AbortError") return;
+    }
+  }
+
+  downloadShareCard();
+  const url = fallbackShareUrl(platform, caption);
+  if (url) window.open(url, "_blank", "noopener,noreferrer");
+  try {
+    await copyShareCaption();
+  } catch (_) {
+    shareStatus.textContent = "Image downloaded. Add it to your post with the caption below.";
+  }
+  if (!url) shareStatus.textContent = "Image downloaded — upload it to your favorite social app.";
+  sendAnalytics("share_completed");
+}
+
+async function openShareDialog() {
+  if (!currentMatches[0]) return;
+  shareDialog.showModal();
+  shareStatus.textContent = "Creating your red carpet reveal…";
+  shareRevealButton.disabled = true;
+  sendAnalytics("share_opened");
+  try {
+    shareBlob = await createShareCard(currentMatches[0]);
+    if (sharePreviewUrl) URL.revokeObjectURL(sharePreviewUrl);
+    sharePreviewUrl = URL.createObjectURL(shareBlob);
+    sharePreview.src = sharePreviewUrl;
+    shareStatus.textContent = "Choose an app. On mobile, the image opens in your share sheet.";
+  } catch (error) {
+    shareStatus.textContent = error.message || "We couldn't create the reveal card.";
+  } finally {
+    shareRevealButton.disabled = false;
+  }
+}
+
 function renderResults(matches) {
+  currentMatches = matches;
   resultGrid.innerHTML = matches
     .map((match, index) => {
       const wikipediaUrl =
@@ -453,6 +680,24 @@ function renderResults(matches) {
     .join("");
 }
 
+shareRevealButton.addEventListener("click", openShareDialog);
+shareClose.addEventListener("click", () => shareDialog.close());
+shareDialog.addEventListener("click", (event) => {
+  if (event.target === shareDialog) shareDialog.close();
+});
+document.querySelectorAll("[data-share-platform]").forEach((button) => {
+  button.addEventListener("click", () => shareToPlatform(button.dataset.sharePlatform));
+});
+downloadShareButton.addEventListener("click", () => {
+  downloadShareCard();
+  shareStatus.textContent = "Reveal card downloaded.";
+});
+copyShareTextButton.addEventListener("click", () => {
+  copyShareCaption().catch(() => {
+    shareStatus.textContent = "Copying is unavailable here. Use More to share the caption.";
+  });
+});
+
 againButton.addEventListener("click", () => {
   results.hidden = true;
   preview.hidden = true;
@@ -460,7 +705,9 @@ againButton.addEventListener("click", () => {
   matchButton.hidden = true;
   upload.value = "";
   selectedBlobs = [];
+  currentMatches = [];
   revokePreviews();
+  if (shareDialog.open) shareDialog.close();
   showStatus();
   window.scrollTo({
     top: document.querySelector(".studio").offsetTop - 20,
@@ -479,5 +726,6 @@ window.addEventListener("pagehide", () => {
   }
   stopCamera();
   revokePreviews();
+  if (sharePreviewUrl) URL.revokeObjectURL(sharePreviewUrl);
 });
 loadConfig();

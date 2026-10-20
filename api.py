@@ -43,6 +43,8 @@ ANALYTICS_EVENTS = {
     "match_submitted",
     "match_succeeded",
     "match_failed",
+    "share_opened",
+    "share_completed",
     "session_end",
 }
 ANALYTICS_CATEGORIES = {

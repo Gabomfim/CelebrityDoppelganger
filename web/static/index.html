@@ -67,9 +67,36 @@
       <section id="results" class="results" hidden>
         <div class="results-heading"><span class="step">02</span><div><p class="eyebrow">The verdict is in</p><h2>Your famous lookalikes</h2></div></div>
         <div id="result-grid" class="result-grid"></div>
-        <button id="again-button" type="button" class="button button-secondary again-button">Try another photobooth</button>
+        <div class="result-actions">
+          <button id="share-reveal-button" type="button" class="button share-reveal-button"><span>✦</span> Share my #1 reveal</button>
+          <button id="again-button" type="button" class="button button-secondary again-button">Try another photobooth</button>
+        </div>
       </section>
     </main>
+
+    <dialog id="share-dialog" class="share-dialog" aria-labelledby="share-title">
+      <button id="share-close" type="button" class="share-close" aria-label="Close share preview">×</button>
+      <div class="share-dialog-copy">
+        <p class="eyebrow">Your red carpet reveal</p>
+        <h2 id="share-title">Make it official.</h2>
+        <p>We created a BuzzFeed-style reveal card using only your celebrity match. Your selfies are never included or stored.</p>
+      </div>
+      <div class="share-preview-frame"><img id="share-preview" alt="Preview of your Celebrity Twin reveal card" /></div>
+      <p id="share-status" class="share-status" role="status" aria-live="polite"></p>
+      <div class="share-platforms" aria-label="Share your result">
+        <button type="button" data-share-platform="instagram"><span class="platform-icon">◎</span> Instagram</button>
+        <button type="button" data-share-platform="facebook"><span class="platform-icon">f</span> Facebook</button>
+        <button type="button" data-share-platform="whatsapp"><span class="platform-icon">◔</span> WhatsApp</button>
+        <button type="button" data-share-platform="x"><span class="platform-icon">𝕏</span> X</button>
+        <button type="button" data-share-platform="threads"><span class="platform-icon">@</span> Threads</button>
+        <button type="button" data-share-platform="native"><span class="platform-icon">↗</span> More</button>
+      </div>
+      <div class="share-fallbacks">
+        <button id="download-share" type="button" class="button button-secondary">↓ Download image</button>
+        <button id="copy-share-text" type="button" class="button button-secondary">Copy caption</button>
+      </div>
+      <canvas id="share-canvas" width="1080" height="1350" hidden></canvas>
+    </dialog>
 
     <footer class="shell"><p>Made by Gabriel Silveira with contrastive supervised prototype learning.</p><div><a href="https://github.com/Gabomfim/CelebrityDoppelganger" target="_blank" rel="noreferrer">Source code ↗</a><a id="footer-linkedin" href="https://www.linkedin.com/in/gabrielabsilveira/" target="_blank" rel="noreferrer">LinkedIn ↗</a></div></footer>
     <script src="/app.js" defer></script>
