@@ -13,6 +13,8 @@ def test_aws_infrastructure_has_cost_guardrails():
     assert 'Cpu: "1024"' in template
     assert 'Memory: "2048"' in template
     assert "MonthlyCostBudget" in template
+    assert "AnalyticsDashboard" in template
+    assert "CacheBehaviors:" in template
     assert "PathPattern: /api/*" in template
     assert "PathPattern: /api/celebrity-photo/*" in template
     assert "DefaultTTL: 300" in template
