@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="description" content="How Celebrity Twin uses supervised contrastive learning, face prototypes, and cosine similarity to find famous lookalikes." />
+    <title>How it works — Celebrity Twin</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,700;9..144,900&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body class="methodology-page">
+    <div class="ambient ambient-one"></div><div class="ambient ambient-two"></div>
+    <header class="nav shell">
+      <a class="brand" href="/" aria-label="Celebrity Twin home"><span>★</span> Celebrity Twin</a>
+      <nav aria-label="Project links">
+        <a class="active" href="/methodology.html" aria-current="page">How it works</a>
+        <a href="https://github.com/Gabomfim/CelebrityDoppelganger" target="_blank" rel="noreferrer">GitHub</a>
+        <a href="https://www.linkedin.com/in/gabrielabsilveira/" target="_blank" rel="noreferrer">LinkedIn</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="method-hero shell">
+        <div class="method-hero-copy">
+          <p class="eyebrow">Behind the velvet rope</p>
+          <h1>Teaching faces to find their <em>place.</em></h1>
+          <p class="method-lede">Celebrity Twin is not trained to memorize a single perfect portrait. It learns an embedding space where photos of the same person gather closely and different identities remain apart.</p>
+          <div class="method-actions">
+            <a class="button button-primary" href="/">Try the photobooth <span>→</span></a>
+            <a class="text-link" href="#results">See the experiment ↓</a>
+          </div>
+        </div>
+        <div class="cluster-stage" aria-label="Illustration of compact, separated face clusters">
+          <div class="cluster cluster-gold"><span>◯</span><span>◯</span><span>◯</span><span>◯</span><span>◯</span></div>
+          <div class="cluster cluster-crimson"><span>◯</span><span>◯</span><span>◯</span><span>◯</span></div>
+          <div class="cluster cluster-ivory"><span>◯</span><span>◯</span><span>◯</span><span>◯</span><span>◯</span></div>
+          <div class="stage-caption"><strong>One identity</strong><span>one compact neighborhood</span></div>
+        </div>
+      </section>
+
+      <section class="score-ribbon" aria-label="Validation results">
+        <div class="shell metric-grid">
+          <article><span>Within-class distance</span><strong>−42.6%</strong><small>more compact</small></article>
+          <article><span>Separation ratio</span><strong>5.34 → 9.55</strong><small>+79% improvement</small></article>
+          <article><span>Validation accuracy</span><strong>74.34%</strong><small>+14.8 points</small></article>
+          <article><span>Celebrity identities</span><strong>258</strong><small>prototype classes</small></article>
+        </div>
+      </section>
+
+      <section class="method-section shell" id="learning">
+        <div class="section-intro">
+          <p class="eyebrow">01 · Representation learning</p>
+          <h2>Classification gets the answer. SupCon shapes the space.</h2>
+          <p>Cross-entropy rewards the model for choosing the correct label. That can produce accurate decision boundaries without requiring samples from the same person to sit tightly together. Supervised contrastive learning optimizes the geometry we actually use at inference time.</p>
+        </div>
+        <div class="comparison-grid">
+          <article class="comparison-card ce-card">
+            <div class="card-kicker">Cross-entropy baseline</div>
+            <h3>Correct, but loosely arranged</h3>
+            <div class="mini-space loose-space" aria-hidden="true">
+              <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+            </div>
+            <p>The classifier learns which side of a boundary each face belongs on. Embeddings from neighboring identities can still be diffuse or close together.</p>
+          </article>
+          <article class="comparison-card supcon-card">
+            <div class="card-kicker">Selected approach</div>
+            <h3>Compact and deliberately separated</h3>
+            <div class="mini-space compact-space" aria-hidden="true">
+              <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+            </div>
+            <p>Each face acts as an anchor. Other augmented images of the same celebrity are positives; every different identity is a negative. The loss pulls positives closer and pushes negatives away.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="method-section dark-section">
+        <div class="shell">
+          <div class="section-intro light-copy">
+            <p class="eyebrow">02 · The training recipe</p>
+            <h2>A face-specialized foundation, carefully fine-tuned.</h2>
+            <p>The backbone starts with facial features learned from VGGFace2. Training then adapts that representation to the celebrity dataset while preserving a normalized metric space.</p>
+          </div>
+          <ol class="pipeline-list">
+            <li><span>01</span><div><h3>Detect and align</h3><p>A face detector isolates one clear face. Every crop receives the same FaceNet pixel standardization used in training and production.</p></div></li>
+            <li><span>02</span><div><h3>Create two views</h3><p>Independent crops, flips, color changes, blur, and small geometric variations teach the model to ignore pose and lighting noise.</p></div></li>
+            <li><span>03</span><div><h3>Learn normalized embeddings</h3><p>An InceptionResnetV1 backbone pretrained on VGGFace2 feeds a projection head. L2 normalization places every embedding on the same unit hypersphere.</p></div></li>
+            <li><span>04</span><div><h3>Balance every batch</h3><p>Each batch contains 16 identities with 4 samples per identity and two augmented views, ensuring every anchor has meaningful positives and negatives.</p></div></li>
+            <li><span>05</span><div><h3>Select by geometry</h3><p>Checkpoints are chosen using the validation separation ratio—not training accuracy alone—so compact clusters and distance from neighboring classes drive selection.</p></div></li>
+          </ol>
+          <div class="loss-note">
+            <span class="loss-symbol">ℒ</span>
+            <div><strong>Supervised contrastive objective</strong><p>For each anchor, the loss rewards high similarity to every same-class positive and penalizes similarity to all other faces in the batch. A temperature of <b>0.10</b> controls how strongly the model focuses on difficult neighbors.</p></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="method-section shell" id="results">
+        <div class="section-intro">
+          <p class="eyebrow">03 · Evidence, not intuition</p>
+          <h2>SupCon won on both geometry and validation accuracy.</h2>
+          <p>The comparison used a stratified validation split and the same pretrained backbone. The winning setup ran for 20 epochs before a final production refit on all available images.</p>
+        </div>
+        <figure class="evidence-figure">
+          <img src="/images/cluster-geometry-training.png" alt="Validation charts comparing cross-entropy and supervised contrastive learning across training epochs" loading="lazy" />
+          <figcaption><strong>Validation geometry over time.</strong> SupCon reduces within-class distance while increasing the ratio between neighboring classes.</figcaption>
+        </figure>
+        <figure class="evidence-figure umap-figure">
+          <img src="/images/ce-vs-supcon-umap.png" alt="UMAP projection comparing cross-entropy embeddings with tighter supervised contrastive clusters" loading="lazy" />
+          <figcaption><strong>A two-dimensional UMAP view.</strong> UMAP is only a projection, but it makes the improved local grouping visible. The quantitative validation metrics remain the basis for model selection.</figcaption>
+        </figure>
+      </section>
+
+      <section class="method-section inference-section">
+        <div class="shell inference-layout">
+          <div class="section-intro">
+            <p class="eyebrow">04 · From selfie to match</p>
+            <h2>Three views become one temporary prototype.</h2>
+            <p>At inference time, the system applies the same detection, cropping, standardization, and normalization used during training. It averages three selfie embeddings and normalizes the result into one more stable user prototype.</p>
+          </div>
+          <div class="inference-flow" aria-label="Inference pipeline">
+            <div><span>1</span><strong>3 selfies</strong><small>processed in memory</small></div><b>→</b>
+            <div><span>2</span><strong>Mean embedding</strong><small>temporary prototype</small></div><b>→</b>
+            <div><span>3</span><strong>Cosine search</strong><small>3 nearest prototypes</small></div>
+          </div>
+          <div class="privacy-callout"><span>🔒</span><p><strong>Privacy is part of the architecture.</strong> Selfies and the temporary prototype are discarded immediately after matching. They are never written to disk or added to the celebrity database.</p></div>
+        </div>
+      </section>
+
+      <section class="method-cta shell">
+        <p class="eyebrow">Ready for your close-up?</p>
+        <h2>Meet the embedding closest to you.</h2>
+        <a class="button button-primary" href="/">Find my celebrity twins <span>→</span></a>
+      </section>
+    </main>
+
+    <footer class="shell"><p>Made by Gabriel Silveira with supervised contrastive prototype learning.</p><div><a href="https://github.com/Gabomfim/CelebrityDoppelganger" target="_blank" rel="noreferrer">Source code ↗</a><a href="https://www.linkedin.com/in/gabrielabsilveira/" target="_blank" rel="noreferrer">LinkedIn ↗</a></div></footer>
+  </body>
+</html>

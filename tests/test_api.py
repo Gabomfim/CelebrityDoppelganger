@@ -124,3 +124,14 @@ def test_camera_controls_have_safe_initial_state():
     assert 'analyticsPreference === "off"' in client.get("/app.js").text
     assert "if (!analyticsEnabled) return" in client.get("/app.js").text
     assert "[hidden] { display:none !important; }" in css
+
+
+def test_methodology_page_explains_validated_training_pipeline():
+    with TestClient(app) as client:
+        response = client.get("/methodology.html")
+    assert response.status_code == 200
+    html = response.text
+    assert "Supervised contrastive objective" in html
+    assert "VGGFace2" in html
+    assert "5.34 → 9.55" in html
+    assert "Selfies and the temporary prototype" in html
