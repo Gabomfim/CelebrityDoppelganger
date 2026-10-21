@@ -21,6 +21,7 @@ const shareStatus = document.querySelector("#share-status");
 const shareCanvas = document.querySelector("#share-canvas");
 const downloadShareButton = document.querySelector("#download-share");
 const copyShareTextButton = document.querySelector("#copy-share-text");
+const publicShareUrl = "https://gabomfim.github.io/CelebrityDoppelganger/";
 
 let stream = null;
 let selectedBlobs = [];
@@ -459,9 +460,9 @@ function escapeHtml(value) {
 
 function shareCaption(match) {
   if (window.CelebrityTwinI18n?.locale === "pt-BR") {
-    return `Saiu o resultado ✨ Meu sósia famoso é ${match.name} — ${match.similarity}% de semelhança! Qual é o seu? ${window.location.origin}`;
+    return `Saiu o resultado ✨ Meu sósia famoso é ${match.name} — ${match.similarity}% de semelhança! Qual é o seu? ${publicShareUrl}`;
   }
-  return `The verdict is in ✨ My Celebrity Twin is ${match.name} — a ${match.similarity}% match! Who is yours? ${window.location.origin}`;
+  return `The verdict is in ✨ My Celebrity Twin is ${match.name} — a ${match.similarity}% match! Who is yours? ${publicShareUrl}`;
 }
 
 function roundedRectangle(context, x, y, width, height, radius) {
@@ -587,7 +588,7 @@ async function createShareCard(match) {
   context.fillText("★  Celebrity Twin", width / 2, 1216);
   context.fillStyle = "rgba(255,248,232,.76)";
   context.font = "600 22px DM Sans, Arial, sans-serif";
-  context.fillText("d3tc24jtdkcl2p.cloudfront.net", width / 2, 1262);
+  context.fillText("gabomfim.github.io/CelebrityDoppelganger", width / 2, 1262);
 
   return new Promise((resolve, reject) => {
     shareCanvas.toBlob(
@@ -619,7 +620,7 @@ async function copyShareCaption() {
 
 function fallbackShareUrl(platform, caption) {
   const encodedCaption = encodeURIComponent(caption);
-  const encodedSite = encodeURIComponent(window.location.origin);
+  const encodedSite = encodeURIComponent(publicShareUrl);
   if (platform === "whatsapp") return `https://wa.me/?text=${encodedCaption}`;
   if (platform === "facebook") return `https://www.facebook.com/sharer/sharer.php?u=${encodedSite}`;
   if (platform === "x") return `https://twitter.com/intent/tweet?text=${encodedCaption}`;
@@ -635,7 +636,7 @@ async function shareToPlatform(platform) {
   const file = new File([shareBlob], shareFilename(match), { type: "image/png" });
   if (navigator.share && navigator.canShare?.({ files: [file] })) {
     try {
-      await navigator.share({ title: "My Celebrity Twin", text: caption, files: [file] });
+      await navigator.share({ title: "My Celebrity Twin", text: caption, url: publicShareUrl, files: [file] });
       shareStatus.textContent = "Your red carpet reveal is ready for its audience!";
       sendAnalytics("share_completed");
       return;
