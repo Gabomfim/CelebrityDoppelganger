@@ -173,6 +173,8 @@ def test_methodology_page_explains_validated_training_pipeline():
     assert "VGGFace2" in html
     assert "5.34 → 9.55" in html
     assert "Selfies and the temporary prototype" in html
+    assert "Meet your closest celebrity lookalikes." in html
+    assert "Meet the embedding closest to you." not in html
     assert 'src="images/ce-vs-supcon-umap.png?v=20261020"' in html
     assert 'loading="eager"' in html
 
@@ -195,4 +197,8 @@ def test_results_include_private_social_share_experience():
         assert f'data-share-platform="{platform}"' in html
     assert "createShareCard" in javascript
     assert "navigator.canShare" in javascript
+    assert (
+        'const publicShareUrl = "https://gabomfim.github.io/CelebrityDoppelganger/"' in javascript
+    )
+    assert "d3tc24jtdkcl2p.cloudfront.net" not in javascript
     assert "Your selfies are never included or stored" in html

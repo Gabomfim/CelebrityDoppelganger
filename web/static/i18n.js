@@ -96,7 +96,7 @@
     "Privacy is part of the architecture.": "Privacidade faz parte da arquitetura.",
     "Selfies and the temporary prototype are discarded immediately after matching. They are never written to disk or added to the celebrity database.": "As selfies e o protótipo temporário são descartados após a comparação. Eles nunca são gravados em disco nem adicionados ao banco de celebridades.",
     "Ready for your close-up?": "Pronto para o seu close?",
-    "Meet the embedding closest to you.": "Conheça o embedding mais próximo de você.",
+    "Meet your closest celebrity lookalikes.": "Descubra quais celebridades mais se parecem com você.",
     "Find my celebrity twins": "Encontrar meus sósias famosos",
     "Requesting camera access…": "Solicitando acesso à câmera…",
     "Camera ready. Center one face inside the guide.": "Câmera pronta. Centralize um rosto dentro da guia.",
