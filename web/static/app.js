@@ -9,6 +9,9 @@ const matchButton = document.querySelector("#match-button");
 const status = document.querySelector("#status");
 const results = document.querySelector("#results");
 const resultGrid = document.querySelector("#result-grid");
+const cosineWheel = document.querySelector("#cosine-wheel");
+const cosineWheelLegend = document.querySelector("#cosine-wheel-legend");
+const cosineWheelTooltip = document.querySelector("#cosine-wheel-tooltip");
 const againButton = document.querySelector("#again-button");
 const countdown = document.querySelector("#countdown");
 const flash = document.querySelector("#flash");
@@ -431,7 +434,7 @@ matchButton.addEventListener("click", async () => {
     });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.detail || "Matching failed. Please try again.");
-    renderResults(payload.matches);
+    renderResults(payload.matches, payload.cosine_wheel || []);
     results.hidden = false;
     results.scrollIntoView({ behavior: "smooth" });
     selectedBlobs = [];
@@ -676,7 +679,7 @@ async function openShareDialog() {
   }
 }
 
-function renderResults(matches) {
+function renderResults(matches, wheelPoints = []) {
   currentMatches = matches;
   const portuguese = window.CelebrityTwinI18n?.locale === "pt-BR";
   resultGrid.innerHTML = matches
@@ -693,6 +696,279 @@ function renderResults(matches) {
       return `<a class="match-card" href="${encodeURI(wikipediaUrl)}" target="_blank" rel="noreferrer" aria-label="${escapeHtml(aria)}"><div class="match-photo"><img src="${encodeURI(match.photo_url)}" alt="${escapeHtml(match.name)}" loading="lazy"><span class="match-rank">${rank}</span><span class="similarity">${match.similarity}% ${twin}</span></div><div class="match-copy"><div class="profession">${escapeHtml(match.profession || biography)}</div><h3>${escapeHtml(match.name)}</h3><p class="curiosity">${escapeHtml(match.why_famous || match.most_famous_for || fallback)}</p><span class="wiki">${escapeHtml(wiki)}</span></div></a>`;
     })
     .join("");
+  renderCosineWheel(matches, wheelPoints);
+}
+
+function svgElement(name, attributes = {}) {
+  const element = document.createElementNS("http://www.w3.org/2000/svg", name);
+  Object.entries(attributes).forEach(([key, value]) => element.setAttribute(key, value));
+  return element;
+}
+
+function renderCosineWheel(matches, wheelPoints) {
+  const portuguese = window.CelebrityTwinI18n?.locale === "pt-BR";
+  const you = portuguese ? "Você" : "You";
+  const distanceLabel = portuguese ? "distância cosseno" : "cosine distance";
+  const centerX = 360;
+  const centerY = 260;
+  const radius = 190;
+  const svg = svgElement("svg", {
+    viewBox: "0 0 720 520",
+    "aria-label": portuguese
+      ? "Roda interativa de distância cosseno"
+      : "Interactive cosine-distance wheel",
+  });
+
+  const defs = svgElement("defs");
+  const glow = svgElement("filter", {
+    id: "wheel-glow",
+    x: "-50%",
+    y: "-50%",
+    width: "200%",
+    height: "200%",
+  });
+  glow.append(svgElement("feGaussianBlur", { stdDeviation: "5", result: "blur" }));
+  const merge = svgElement("feMerge");
+  merge.append(
+    svgElement("feMergeNode", { in: "blur" }),
+    svgElement("feMergeNode", { in: "SourceGraphic" }),
+  );
+  glow.append(merge);
+  defs.append(glow);
+  svg.append(defs);
+
+  const plot = svgElement("g", { class: "wheel-plot" });
+  plot.append(
+    svgElement("circle", { cx: centerX, cy: centerY, r: radius, class: "wheel-ring" }),
+    svgElement("line", {
+      x1: centerX - radius,
+      y1: centerY,
+      x2: centerX + radius,
+      y2: centerY,
+      class: "wheel-axis",
+    }),
+    svgElement("line", {
+      x1: centerX,
+      y1: centerY - radius,
+      x2: centerX,
+      y2: centerY + radius,
+      class: "wheel-axis",
+    }),
+  );
+
+  const originLabel = svgElement("text", {
+    x: centerX,
+    y: centerY - 12,
+    class: "wheel-origin-label",
+    "text-anchor": "middle",
+  });
+  originLabel.textContent = portuguese ? "círculo unitário normalizado" : "normalized unit circle";
+  plot.append(originLabel);
+
+  const highlighted = new Map(matches.slice(0, 3).map((match, index) => [match.class_name, index + 1]));
+  const availablePoints = wheelPoints.length
+    ? wheelPoints
+    : matches.map((match) => ({
+        class_name: match.class_name,
+        name: match.name,
+        similarity: Number(match.similarity) / 100,
+      }));
+  let pinnedPoint = null;
+
+  function pointPosition(point, forcedSide = null) {
+    const similarity = Math.max(-1, Math.min(1, Number(point.similarity)));
+    const verticalMagnitude = Math.sqrt(Math.max(0, 1 - similarity ** 2));
+    const hash = [...String(point.class_name)].reduce(
+      (total, character) => total + character.charCodeAt(0),
+      0,
+    );
+    const side = forcedSide || (hash % 2 === 0 ? 1 : -1);
+    return {
+      similarity,
+      x: centerX + radius * similarity,
+      y: centerY - side * radius * verticalMagnitude,
+    };
+  }
+
+  function showPointDetails(point, target, pin = false) {
+    if (pinnedPoint && !pin) return;
+    pinnedPoint = pin ? point.class_name : pinnedPoint;
+    const rect = cosineWheel.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    const name = document.createElement("strong");
+    name.textContent = point.name;
+    const metric = document.createElement("span");
+    const similarityPercent = (Number(point.similarity) * 100).toFixed(1);
+    metric.textContent = `${similarityPercent}% · ${distanceLabel} ${(1 - Number(point.similarity)).toFixed(3)}`;
+    cosineWheelTooltip.replaceChildren(name, metric);
+    cosineWheelTooltip.style.left = `${targetRect.left - rect.left + targetRect.width / 2}px`;
+    cosineWheelTooltip.style.top = `${targetRect.top - rect.top}px`;
+    cosineWheelTooltip.hidden = false;
+  }
+
+  availablePoints.forEach((point) => {
+    if (highlighted.has(point.class_name)) return;
+    const position = pointPosition(point);
+    const dot = svgElement("circle", {
+      cx: position.x,
+      cy: position.y,
+      r: 3.2,
+      class: "wheel-background-point",
+      tabindex: "0",
+      role: "button",
+      "aria-label": `${point.name}, ${distanceLabel} ${(1 - position.similarity).toFixed(3)}`,
+    });
+    dot.addEventListener("pointerenter", () => showPointDetails(point, dot));
+    dot.addEventListener("pointerleave", () => {
+      if (!pinnedPoint) cosineWheelTooltip.hidden = true;
+    });
+    dot.addEventListener("click", (event) => {
+      event.stopPropagation();
+      pinnedPoint = pinnedPoint === point.class_name ? null : point.class_name;
+      if (pinnedPoint) showPointDetails(point, dot, true);
+      else cosineWheelTooltip.hidden = true;
+    });
+    dot.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        pinnedPoint = point.class_name;
+        showPointDetails(point, dot, true);
+      }
+    });
+    plot.append(dot);
+  });
+
+  const userX = centerX + radius;
+  const userY = centerY;
+  const userPoint = svgElement("g", { class: "wheel-user" });
+  userPoint.append(
+    svgElement("circle", { cx: userX, cy: userY, r: 14, class: "wheel-user-halo" }),
+    svgElement("circle", { cx: userX, cy: userY, r: 8, class: "wheel-user-point" }),
+  );
+  const userLabel = svgElement("text", {
+    x: userX + 18,
+    y: userY + 5,
+    class: "wheel-user-label",
+  });
+  userLabel.textContent = you;
+  userPoint.append(userLabel);
+  plot.append(userPoint);
+
+  cosineWheelLegend.replaceChildren();
+  matches.slice(0, 3).forEach((match, index) => {
+    const similarity = Math.max(-1, Math.min(1, Number(match.similarity) / 100));
+    const cosineDistance = 1 - similarity;
+    const side = index % 2 === 0 ? 1 : -1;
+    const position = pointPosition({ ...match, similarity }, side);
+    const angle = Math.acos(similarity);
+    const pointX = position.x;
+    const pointY = position.y;
+    const labelRadius = radius + 25 + (index === 2 ? 24 : 0);
+    const labelX = centerX + labelRadius * Math.cos(angle);
+    const labelY = centerY - side * labelRadius * Math.sin(angle);
+
+    plot.append(
+      svgElement("line", {
+        x1: userX,
+        y1: userY,
+        x2: pointX,
+        y2: pointY,
+        class: `wheel-connection wheel-rank-${index + 1}`,
+      }),
+    );
+    const highlightedPoint = svgElement("circle", {
+        cx: pointX,
+        cy: pointY,
+        r: index === 0 ? 9 : 7,
+        class: `wheel-celebrity wheel-rank-${index + 1}`,
+        "data-cosine-distance": cosineDistance.toFixed(3),
+        tabindex: "0",
+        role: "button",
+        "aria-label": `${match.name}, ${distanceLabel} ${cosineDistance.toFixed(3)}`,
+      });
+    highlightedPoint.addEventListener("pointerenter", () =>
+      showPointDetails({ ...match, similarity }, highlightedPoint),
+    );
+    highlightedPoint.addEventListener("pointerleave", () => {
+      if (!pinnedPoint) cosineWheelTooltip.hidden = true;
+    });
+    highlightedPoint.addEventListener("click", (event) => {
+      event.stopPropagation();
+      pinnedPoint = pinnedPoint === match.class_name ? null : match.class_name;
+      if (pinnedPoint) showPointDetails({ ...match, similarity }, highlightedPoint, true);
+      else cosineWheelTooltip.hidden = true;
+    });
+    plot.append(highlightedPoint);
+    const label = svgElement("text", {
+      x: labelX,
+      y: labelY,
+      class: `wheel-celebrity-label wheel-rank-${index + 1}`,
+      "text-anchor": similarity > 0.92 ? "start" : "middle",
+    });
+    label.textContent = `#${index + 1} ${match.name}`;
+    plot.append(label);
+
+    const item = document.createElement("li");
+    const name = document.createElement("strong");
+    name.textContent = match.name;
+    const metric = document.createElement("span");
+    metric.textContent = `${match.similarity}% · ${distanceLabel} ${cosineDistance.toFixed(3)}`;
+    item.append(name, metric);
+    cosineWheelLegend.append(item);
+  });
+
+  svg.append(plot);
+  let viewBox = { x: 0, y: 0, width: 720, height: 520 };
+  let drag = null;
+  const applyViewBox = () =>
+    svg.setAttribute("viewBox", `${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`);
+  svg.addEventListener(
+    "wheel",
+    (event) => {
+      event.preventDefault();
+      const rect = svg.getBoundingClientRect();
+      const ratioX = (event.clientX - rect.left) / rect.width;
+      const ratioY = (event.clientY - rect.top) / rect.height;
+      const anchorX = viewBox.x + ratioX * viewBox.width;
+      const anchorY = viewBox.y + ratioY * viewBox.height;
+      const factor = event.deltaY < 0 ? 0.84 : 1.19;
+      const nextWidth = Math.max(180, Math.min(1000, viewBox.width * factor));
+      const nextHeight = nextWidth * (520 / 720);
+      viewBox = {
+        x: anchorX - ratioX * nextWidth,
+        y: anchorY - ratioY * nextHeight,
+        width: nextWidth,
+        height: nextHeight,
+      };
+      applyViewBox();
+    },
+    { passive: false },
+  );
+  svg.addEventListener("pointerdown", (event) => {
+    if (event.target.matches("circle[role='button']")) return;
+    drag = { x: event.clientX, y: event.clientY, viewX: viewBox.x, viewY: viewBox.y };
+    svg.setPointerCapture(event.pointerId);
+    svg.classList.add("is-panning");
+  });
+  svg.addEventListener("pointermove", (event) => {
+    if (!drag) return;
+    const rect = svg.getBoundingClientRect();
+    viewBox.x = drag.viewX - ((event.clientX - drag.x) / rect.width) * viewBox.width;
+    viewBox.y = drag.viewY - ((event.clientY - drag.y) / rect.height) * viewBox.height;
+    applyViewBox();
+  });
+  const stopPan = () => {
+    drag = null;
+    svg.classList.remove("is-panning");
+  };
+  svg.addEventListener("pointerup", stopPan);
+  svg.addEventListener("pointercancel", stopPan);
+  svg.addEventListener("click", () => {
+    pinnedPoint = null;
+    cosineWheelTooltip.hidden = true;
+  });
+
+  cosineWheel.replaceChildren(svg, cosineWheelTooltip);
 }
 
 shareRevealButton.addEventListener("click", openShareDialog);

@@ -91,6 +91,15 @@ class CelebrityMatcher:
         self.detector = MTCNN(keep_all=False, device=self.device, post_process=False)
         self.transform = build_eval_transform()
         self.table = lancedb.connect(database_uri).open_table("person_prototypes")
+        prototype_rows = (
+            self.table.to_arrow().select(["class_name", "display_name", "vector"]).to_pylist()
+        )
+        self.prototype_metadata = [
+            {"class_name": row["class_name"], "name": row["display_name"]} for row in prototype_rows
+        ]
+        self.prototype_matrix = torch.nn.functional.normalize(
+            torch.tensor([row["vector"] for row in prototype_rows], dtype=torch.float32), dim=1
+        )
         self.dataset_dir = dataset_dir.resolve() if dataset_dir else None
         self.photos = self._index_photos()
         self.s3_photos = {
@@ -186,12 +195,21 @@ class CelebrityMatcher:
     def match(self, image_bytes: bytes) -> list[dict[str, Any]]:
         return self._match_vector(self.embed(image_bytes))
 
-    def match_prototype(self, images: list[bytes]) -> list[dict[str, Any]]:
+    def match_prototype(self, images: list[bytes]) -> dict[str, list[dict[str, Any]]]:
         if len(images) != PROTOTYPE_IMAGE_COUNT:
             raise ValueError(f"Exactly {PROTOTYPE_IMAGE_COUNT} images are required")
         embeddings = torch.tensor([self.embed(image) for image in images])
         prototype = torch.nn.functional.normalize(embeddings.mean(dim=0), dim=0)
-        return self._match_vector(prototype.tolist())
+        matches = self._match_vector(prototype.tolist())
+        similarities = torch.mv(self.prototype_matrix, prototype.cpu()).tolist()
+        wheel = [
+            {
+                **metadata,
+                "similarity": round(max(-1.0, min(1.0, similarity)), 6),
+            }
+            for metadata, similarity in zip(self.prototype_metadata, similarities, strict=True)
+        ]
+        return {"matches": matches, "cosine_wheel": wheel}
 
 
 def create_matcher() -> CelebrityMatcher:
@@ -386,7 +404,7 @@ async def match_prototype(request: Request) -> dict[str, Any]:
                 )
             images.append(image)
         inference_images = list(images)
-        results = await run_bounded_inference(
+        match_result = await run_bounded_inference(
             request, lambda: matcher.match_prototype(inference_images)
         )
     except FaceNotDetectedError as error:
@@ -399,8 +417,15 @@ async def match_prototype(request: Request) -> dict[str, Any]:
     finally:
         body.clear()
         images.clear()
+    if isinstance(match_result, dict):
+        results = match_result["matches"]
+        cosine_wheel = match_result.get("cosine_wheel", [])
+    else:
+        results = match_result
+        cosine_wheel = []
     return {
         "matches": results,
+        "cosine_wheel": cosine_wheel,
         "neighbor_count": 3,
         "prototype_image_count": PROTOTYPE_IMAGE_COUNT,
         "image_stored": False,

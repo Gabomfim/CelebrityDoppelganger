@@ -1,9 +1,10 @@
 import base64
 from pathlib import Path
 
+import torch
 from fastapi.testclient import TestClient
 
-from api import LINKEDIN_URL, app
+from api import LINKEDIN_URL, CelebrityMatcher, app
 
 PROJECT_ROOT = Path(__file__).parents[1]
 
@@ -48,6 +49,7 @@ def test_match_prototype_averages_three_in_memory_selfies():
         response = client.post("/api/match-prototype", json={"images": images})
     assert response.status_code == 200
     assert response.json()["prototype_image_count"] == 3
+    assert response.json()["cosine_wheel"] == []
     assert response.json()["neighbor_count"] == 3
     assert response.json()["image_stored"] is False
 
@@ -57,6 +59,25 @@ def test_match_prototype_requires_exactly_three_selfies():
         app.state.matcher = StubMatcher()
         response = client.post("/api/match-prototype", json={"images": ["b25l"]})
     assert response.status_code == 400
+
+
+def test_cosine_wheel_uses_normalized_prototypes_without_exposing_embeddings():
+    matcher = CelebrityMatcher.__new__(CelebrityMatcher)
+    matcher.prototype_matrix = torch.tensor([[1.0, 0.0], [0.0, 1.0]])
+    matcher.prototype_metadata = [
+        {"class_name": "person_one", "name": "Person One"},
+        {"class_name": "person_two", "name": "Person Two"},
+    ]
+    matcher.embed = lambda _: [1.0, 0.0]
+    matcher._match_vector = lambda _: [{"class_name": "person_one", "name": "Person One"}]
+
+    result = matcher.match_prototype([b"one", b"two", b"three"])
+
+    assert result["cosine_wheel"] == [
+        {"class_name": "person_one", "name": "Person One", "similarity": 1.0},
+        {"class_name": "person_two", "name": "Person Two", "similarity": 0.0},
+    ]
+    assert all("vector" not in point for point in result["cosine_wheel"])
 
 
 def test_social_links_are_configured(monkeypatch):
@@ -202,3 +223,17 @@ def test_results_include_private_social_share_experience():
     )
     assert "d3tc24jtdkcl2p.cloudfront.net" not in javascript
     assert "Your selfies are never included or stored" in html
+
+
+def test_results_include_interactive_cosine_wheel():
+    with TestClient(app) as client:
+        html = client.get("/").text
+        javascript = client.get("/app.js").text
+    assert 'id="cosine-wheel"' in html
+    assert 'id="cosine-wheel-tooltip"' in html
+    assert "Scroll to zoom" in html
+    assert "renderCosineWheel(matches, wheelPoints)" in javascript
+    assert "Math.sqrt(Math.max(0, 1 - similarity ** 2))" in javascript
+    assert '"data-cosine-distance"' in javascript
+    assert 'svg.addEventListener(\n    "wheel"' in javascript
+    assert 'svg.addEventListener("pointerdown"' in javascript
