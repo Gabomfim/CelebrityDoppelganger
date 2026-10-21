@@ -68,6 +68,19 @@
       <section id="results" class="results" hidden>
         <div class="results-heading"><span class="step">02</span><div><p class="eyebrow">The verdict is in</p><h2>Your famous lookalikes</h2></div></div>
         <div id="result-grid" class="result-grid"></div>
+        <section class="cosine-wheel-card" aria-labelledby="cosine-wheel-title">
+          <div class="cosine-wheel-copy">
+            <p class="eyebrow">Your similarity orbit</p>
+            <h3 id="cosine-wheel-title">See why these three faces are closest.</h3>
+            <p>Every point lies on the unit circle. The angle from “You” preserves each match's cosine similarity: a smaller angle means a closer face.</p>
+          </div>
+          <p class="cosine-wheel-controls">Scroll to zoom · drag to pan · hover or tap any point</p>
+          <div id="cosine-wheel" class="cosine-wheel" role="img" aria-label="Interactive unit circle showing you and the celebrity prototypes">
+            <div id="cosine-wheel-tooltip" class="cosine-wheel-tooltip" hidden></div>
+          </div>
+          <ol id="cosine-wheel-legend" class="cosine-wheel-legend" aria-label="Cosine distances"></ol>
+          <p class="cosine-wheel-note">The wheel preserves each celebrity's cosine distance to you; distances between celebrity points are not represented.</p>
+        </section>
         <div class="result-actions">
           <button id="share-reveal-button" type="button" class="button share-reveal-button"><span>✦</span> Share my #1 reveal</button>
           <button id="again-button" type="button" class="button button-secondary again-button">Try another photobooth</button>
